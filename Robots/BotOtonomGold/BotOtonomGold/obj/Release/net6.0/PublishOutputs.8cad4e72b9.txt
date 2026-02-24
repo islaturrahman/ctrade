@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Release/net6.0/publish/BotOtonomGold.dll
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Release/net6.0/publish/BotOtonomGold.deps.json
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Release/net6.0/publish/BotOtonomGold.pdb
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Release/net6.0/publish/cAlgo.API.dll

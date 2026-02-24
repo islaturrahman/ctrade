@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/bin/Release/net6.0/publish/DragVAChart.dll
+/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/bin/Release/net6.0/publish/DragVAChart.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/bin/Release/net6.0/publish/DragVAChart.pdb
+/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/bin/Release/net6.0/publish/cAlgo.API.dll

@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Indicators/Big Traders/Big Traders/bin/Release/net6.0/publish/Big Traders.dll
+/Users/macbook/cAlgo/Sources/Indicators/Big Traders/Big Traders/bin/Release/net6.0/publish/Big Traders.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/Big Traders/Big Traders/bin/Release/net6.0/publish/Big Traders.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Big Traders/Big Traders/bin/Release/net6.0/publish/cAlgo.API.dll

@@ -1,0 +1,12 @@
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/OrderFlowIndicator.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/OrderFlowIndicator.dll
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/OrderFlowIndicator.pdb
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.dll
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/refint/OrderFlowIndicator.dll
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/OrderFlowIndicator.pdb
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/obj/Release/net6.0/ref/OrderFlowIndicator.dll

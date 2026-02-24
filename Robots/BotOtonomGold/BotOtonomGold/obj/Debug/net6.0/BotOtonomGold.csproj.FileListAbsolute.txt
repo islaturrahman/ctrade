@@ -1,0 +1,12 @@
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Debug/net6.0/BotOtonomGold.deps.json
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Debug/net6.0/BotOtonomGold.dll
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/bin/Debug/net6.0/BotOtonomGold.pdb
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.dll
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/refint/BotOtonomGold.dll
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/BotOtonomGold.pdb
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Debug/net6.0/ref/BotOtonomGold.dll

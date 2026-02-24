@@ -1,0 +1,250 @@
+[
+  {
+    "Flags": "Indicator",
+    "Guid": "00000000-0000-0000-0000-000000000000",
+    "Group": "Custom",
+    "FriendlyName": "DragVolumeProfileBuySell",
+    "ShortName": null,
+    "TypeName": "cAlgo.Indicators.DragVolumeProfileBuySell",
+    "AssemblyName": "DragVAChart, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+    "TimeZone": "UTC",
+    "IsOverlay": true,
+    "IsPercentage": false,
+    "ScalePrecision": null,
+    "Levels": [],
+    "DefaultSymbolName": null,
+    "DefaultTimeFrame": null,
+    "Video": null,
+    "Lines": [],
+    "Clouds": [],
+    "Parameters": [
+      {
+        "EnumValues": {
+          "Auto": 0,
+          "Click": 1,
+          "Rectangle": 2
+        },
+        "DefaultValue": 1,
+        "ParameterType": "Enum",
+        "PropertyName": "SelectionMode",
+        "FriendlyName": "Selection Mode",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 10,
+        "MaxValue": 300,
+        "Step": 5,
+        "DefaultValue": 50,
+        "ParameterType": "Integer",
+        "PropertyName": "NumberOfBars",
+        "FriendlyName": "Number of Bars (Auto Mode)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 3,
+        "MaxValue": 50,
+        "Step": 1,
+        "DefaultValue": 8,
+        "ParameterType": "Integer",
+        "PropertyName": "HistogramWidthPercent",
+        "FriendlyName": "Histogram Width % of Area",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 0.1,
+        "MaxValue": 1.7976931348623157E+308,
+        "Step": 0.1,
+        "DefaultValue": 90.0,
+        "ParameterType": "Double",
+        "PropertyName": "BucketSizePips",
+        "FriendlyName": "Bucket Size (pips)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "AutoBucketSize",
+        "FriendlyName": "Auto Bucket Size",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowPOC",
+        "FriendlyName": "Show POC",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowValueArea",
+        "FriendlyName": "Show Value Area (70%)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 1,
+        "MaxValue": 10,
+        "Step": 1,
+        "DefaultValue": 3,
+        "ParameterType": "Integer",
+        "PropertyName": "MaxRects",
+        "FriendlyName": "Max VP Areas",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "UseTickData",
+        "FriendlyName": "Use Tick Data (Slower but Accurate)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#00FF00FF",
+        "ParameterType": "Color",
+        "PropertyName": "BuyColor",
+        "FriendlyName": "Buy Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "MinValue": 50,
+        "MaxValue": 255,
+        "Step": 10,
+        "DefaultValue": 210,
+        "ParameterType": "Integer",
+        "PropertyName": "BuyOpacity",
+        "FriendlyName": "Buy Opacity (0-255)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#FF0000FF",
+        "ParameterType": "Color",
+        "PropertyName": "SellColor",
+        "FriendlyName": "Sell Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "MinValue": 50,
+        "MaxValue": 255,
+        "Step": 10,
+        "DefaultValue": 210,
+        "ParameterType": "Integer",
+        "PropertyName": "SellOpacity",
+        "FriendlyName": "Sell Opacity (0-255)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#FFFF00FF",
+        "ParameterType": "Color",
+        "PropertyName": "POCColor",
+        "FriendlyName": "POC Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowCumulativeDelta",
+        "FriendlyName": "Show Cumulative Delta",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 3,
+        "MaxValue": 50,
+        "Step": 1,
+        "DefaultValue": 10,
+        "ParameterType": "Integer",
+        "PropertyName": "CumulativeDeltaWidthPercent",
+        "FriendlyName": "Cumulative Delta Width %",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#00FF00FF",
+        "ParameterType": "Color",
+        "PropertyName": "PositiveDeltaColor",
+        "FriendlyName": "Positive Delta Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#FF0000FF",
+        "ParameterType": "Color",
+        "PropertyName": "NegativeDeltaColor",
+        "FriendlyName": "Negative Delta Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "MinValue": 50,
+        "MaxValue": 255,
+        "Step": 10,
+        "DefaultValue": 180,
+        "ParameterType": "Integer",
+        "PropertyName": "DeltaOpacity",
+        "FriendlyName": "Delta Opacity (0-255)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#FFFF00FF",
+        "ParameterType": "Color",
+        "PropertyName": "CrosshairColor",
+        "FriendlyName": "Crosshair Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "MinValue": 30,
+        "MaxValue": 255,
+        "Step": 10,
+        "DefaultValue": 120,
+        "ParameterType": "Integer",
+        "PropertyName": "CrosshairOpacity",
+        "FriendlyName": "Crosshair Opacity (0-255)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      }
+    ],
+    "Capabilities": [],
+    "CustomAttributes": [],
+    "Sets": [],
+    "AddIndicatorsToChart": false,
+    "AdditionalInfoUrl": null,
+    "Bars": []
+  }
+]

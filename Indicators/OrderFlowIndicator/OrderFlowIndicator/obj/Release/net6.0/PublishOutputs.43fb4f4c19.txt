@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/publish/OrderFlowIndicator.dll
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/publish/OrderFlowIndicator.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/publish/OrderFlowIndicator.pdb
+/Users/macbook/cAlgo/Sources/Indicators/OrderFlowIndicator/OrderFlowIndicator/bin/Release/net6.0/publish/cAlgo.API.dll

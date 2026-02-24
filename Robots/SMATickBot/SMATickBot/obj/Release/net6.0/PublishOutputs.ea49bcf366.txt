@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Robots/SMATickBot/SMATickBot/bin/Release/net6.0/publish/SMATickBot.dll
+/Users/macbook/cAlgo/Sources/Robots/SMATickBot/SMATickBot/bin/Release/net6.0/publish/SMATickBot.deps.json
+/Users/macbook/cAlgo/Sources/Robots/SMATickBot/SMATickBot/bin/Release/net6.0/publish/SMATickBot.pdb
+/Users/macbook/cAlgo/Sources/Robots/SMATickBot/SMATickBot/bin/Release/net6.0/publish/cAlgo.API.dll

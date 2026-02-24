@@ -1,0 +1,12 @@
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/bin/Release/net6.0/BigTraderBot.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/bin/Release/net6.0/BigTraderBot.dll
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/bin/Release/net6.0/BigTraderBot.pdb
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.dll
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/refint/BigTraderBot.dll
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/BigTraderBot.pdb
+/Users/macbook/cAlgo/Sources/Indicators/BigTraderBot/BigTraderBot/obj/Release/net6.0/ref/BigTraderBot.dll

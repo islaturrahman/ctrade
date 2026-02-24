@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "OkczGZDhkrE=",
+  "success": true,
+  "projectFilePath": "/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/DragVAChart.csproj",
+  "expectedPackageFiles": [
+    "/Users/macbook/.nuget/packages/ctrader.automate/1.0.14/ctrader.automate.1.0.14.nupkg.sha512",
+    "/Users/macbook/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "/Users/macbook/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.36/microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512"
+  ],
+  "logs": []
+}
