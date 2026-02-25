@@ -397,6 +397,42 @@
         "Description": ""
       },
       {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "TradeSydney",
+        "FriendlyName": "Trade Sydney Session (18:00 - 02:00 EST)",
+        "GroupName": "Time Session",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "TradeTokyo",
+        "FriendlyName": "Trade Tokyo Session (19:00 - 04:00 EST)",
+        "GroupName": "Time Session",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "TradeLondon",
+        "FriendlyName": "Trade London Session (03:00 - 12:00 EST)",
+        "GroupName": "Time Session",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "TradeNY",
+        "FriendlyName": "Trade NY Session (08:00 - 18:00 EST)",
+        "GroupName": "Time Session",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
         "DefaultValue": true,
         "ParameterType": "Boolean",
         "PropertyName": "ShowBubbles",
@@ -423,6 +459,36 @@
         "PropertyName": "ShowClusterZones",
         "FriendlyName": "Show Cluster Zones",
         "GroupName": "Visual",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowPDZones",
+        "FriendlyName": "Show P/D Zones",
+        "GroupName": "Visual SMC LuxAlgo",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowEqhEql",
+        "FriendlyName": "Show EQH / EQL",
+        "GroupName": "Visual SMC LuxAlgo",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": -1.7976931348623157E+308,
+        "MaxValue": 1.7976931348623157E+308,
+        "Step": 0.1,
+        "DefaultValue": 15.0,
+        "ParameterType": "Double",
+        "PropertyName": "EqhEqlTolerancePips",
+        "FriendlyName": "EQH/EQL Tolerance Pips",
+        "GroupName": "Visual SMC LuxAlgo",
         "IsValueVisibleInTitle": true,
         "Description": ""
       }

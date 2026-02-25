@@ -10,3 +10,4 @@
 /Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Release/net6.0/refint/BotOtonomGold.dll
 /Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Release/net6.0/BotOtonomGold.pdb
 /Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Release/net6.0/ref/BotOtonomGold.dll
+/Users/macbook/cAlgo/Sources/Robots/BotOtonomGold/BotOtonomGold/obj/Release/net6.0/BotOtonomGold.sourcelink.json

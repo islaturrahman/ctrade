@@ -138,6 +138,22 @@ namespace cAlgo.Robots
         public bool UseOBTrailingStop { get; set; }
 
         // ═══════════════════════════════════════
+        //  TIME SESSIONS
+        // ═══════════════════════════════════════
+
+        [Parameter("Trade Sydney Session (18:00 - 02:00 EST)", Group = "Time Session", DefaultValue = false)]
+        public bool TradeSydney { get; set; }
+
+        [Parameter("Trade Tokyo Session (19:00 - 04:00 EST)", Group = "Time Session", DefaultValue = false)]
+        public bool TradeTokyo { get; set; }
+
+        [Parameter("Trade London Session (03:00 - 12:00 EST)", Group = "Time Session", DefaultValue = true)]
+        public bool TradeLondon { get; set; }
+
+        [Parameter("Trade NY Session (08:00 - 18:00 EST)", Group = "Time Session", DefaultValue = true)]
+        public bool TradeNY { get; set; }
+
+        // ═══════════════════════════════════════
         //  VISUAL
         // ═══════════════════════════════════════
 
@@ -149,6 +165,15 @@ namespace cAlgo.Robots
 
         [Parameter("Show Cluster Zones", Group = "Visual", DefaultValue = true)]
         public bool ShowClusterZones { get; set; }
+
+        [Parameter("Show P/D Zones", Group = "Visual SMC LuxAlgo", DefaultValue = true)]
+        public bool ShowPDZones { get; set; }
+
+        [Parameter("Show EQH / EQL", Group = "Visual SMC LuxAlgo", DefaultValue = true)]
+        public bool ShowEqhEql { get; set; }
+
+        [Parameter("EQH/EQL Tolerance Pips", Group = "Visual SMC LuxAlgo", DefaultValue = 15.0)]
+        public double EqhEqlTolerancePips { get; set; }
 
         // ═══════════════════════════════════════
         //  PRIVATE FIELDS
@@ -188,7 +213,9 @@ namespace cAlgo.Robots
         private List<FairValueGap> fvgList = new List<FairValueGap>();
         private SmcTrend smcTrend = SmcTrend.Undefined;
         private double lastSwingHigh = 0;
+        private int lastSwingHighIndex = 0;
         private double lastSwingLow = double.MaxValue;
+        private int lastSwingLowIndex = 0;
         private int smcStructureCount = 0;
         private double lastBosLevel = 0;  // BOS dedup
         private int lastSmcSignalBar = -999; // SMC signal cooldown
@@ -254,6 +281,9 @@ namespace cAlgo.Robots
             }
 
             Positions.Closed += OnPositionClosed;
+            
+            // Tambahkan Tombol UI Manual
+            CreateDashboardControls();
         }
 
         protected override void OnTick()
@@ -261,7 +291,40 @@ namespace cAlgo.Robots
             ResetDailyCounters();
         }
 
+        private void CreateDashboardControls()
+        {
+            var btnClearOB = new Button
+            {
+                Text = "🗑️ Clear All OBs",
+                BackgroundColor = Color.Firebrick,
+                ForegroundColor = Color.White,
+                Margin = new Thickness(0, 0, 10, 50),
+                Height = 30,
+                Width = 120,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
 
+            btnClearOB.Click += args => DeleteAllOrderBlocks();
+
+            Chart.AddControl(btnClearOB);
+        }
+
+        private void DeleteAllOrderBlocks()
+        {
+            int count = orderBlocks.Count;
+            foreach (var ob in orderBlocks)
+            {
+                try
+                {
+                    Chart.RemoveObject($"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}");
+                    Chart.RemoveObject($"OBL_{ob.BarIndex}");
+                }
+                catch { }
+            }
+            orderBlocks.Clear();
+            Print($"🗑️ DASHBOARD COMMAND: {count} Order Blocks forcefully cleared!");
+        }
 
         private void LogDashboard()
         {
@@ -280,9 +343,7 @@ namespace cAlgo.Robots
                 double dist = (price - smaValue) / Symbol.PipSize;
                 string pos = price > smaValue ? "ABOVE ▲" : "BELOW ▼";
                 Print($"  📈 SMA({SmaPeriod}): {smaValue:F2} | Price {pos} ({dist:+0.0;-0.0} pips)");
-            }
-            else
-            {
+            }else{
                 Print("  📈 SMA: Disabled");
             }
 
@@ -659,6 +720,26 @@ namespace cAlgo.Robots
             }
         }
 
+        private bool IsValidSessionToTrade()
+        {
+            // Konversi Waktu Broker ke EST (GMT-5) sesuai pedoman blok grid
+            DateTime estTime = Server.TimeInUtc.AddHours(-5);
+            int hour = estTime.Hour;
+            
+            // Mengacu pada blok Grid gambar:
+            bool isLondon = (hour >= 3 && hour < 12);
+            bool isNY     = (hour >= 8 && hour < 18);
+            bool isSydney = (hour >= 18 || hour < 2);
+            bool isTokyo  = (hour >= 19 || hour < 4);
+
+            if (isSydney && TradeSydney) return true;
+            if (isTokyo && TradeTokyo) return true;
+            if (isLondon && TradeLondon) return true;
+            if (isNY && TradeNY) return true;
+
+            return false;
+        }
+
         protected override void OnBar()
         {
             UpdateHTFTrend();
@@ -668,6 +749,10 @@ namespace cAlgo.Robots
             {
                 UpdateSMCEngine();
                 UpdateOBTrailingStop();
+                
+                // ── LUXALGO VISUAL OVERLAYS ──
+                if (ShowPDZones) DrawVisualPDZones();
+                if (ShowEqhEql) CheckVisualEqhEql();
             }
 
             // Finalize previous candle
@@ -698,6 +783,7 @@ namespace cAlgo.Robots
         private void CheckEntry()
         {
             if (!EnableSMC) return;
+            if (!IsValidSessionToTrade()) return;
 
             double currentPrice = Bars.ClosePrices.LastValue;
 
@@ -742,6 +828,7 @@ namespace cAlgo.Robots
         private void CheckBubbleInSmcSignal()
         {
             if (!EnableSMC) return;
+            if (!IsValidSessionToTrade()) return;
 
             int prevBar = Bars.Count - 2;
             if (prevBar < 0 || !candleFootprints.ContainsKey(prevBar)) return;
@@ -1293,6 +1380,74 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
+        //  LUXALGO SMC VISUAL ENGINE
+        // ═══════════════════════════════════════
+
+        private void DrawVisualPDZones()
+        {
+            if (lastSwingHigh == 0 || lastSwingLow == double.MaxValue) return;
+            
+            double equilibrium = (lastSwingHigh + lastSwingLow) / 2.0;
+            
+            // Anchor kotak tepat di tempat Swing Point lahir
+            int startBar = Math.Min(lastSwingHighIndex, lastSwingLowIndex);
+            if (startBar <= 0) startBar = Math.Max(0, Bars.Count - 60);
+
+            int endBar = Bars.Count + 5; // Sedikit menjorok ke depan
+
+            // Hapus blok kotak yang lama agar tidak mengotori layar
+            Chart.RemoveObject("PDPremiumBox");
+            Chart.RemoveObject("PDDiscountBox");
+            Chart.RemoveObject("PDTopLbl");
+            Chart.RemoveObject("PDBotLbl");
+
+            // 1. Garis Batas Atas (Premium)
+            Chart.DrawTrendLine("PDTopLine", startBar, lastSwingHigh, endBar, lastSwingHigh, Color.Red, 1, LineStyle.Solid);
+            Chart.DrawText("PDTopTxt", "Premium", endBar + 1, lastSwingHigh, Color.Red);
+
+            // 2. Garis Tengah (Equilibrium)
+            Chart.DrawTrendLine("PDEqLine", startBar, equilibrium, endBar, equilibrium, Color.DarkOrange, 1, LineStyle.LinesDots);
+            Chart.DrawText("PDEqTxt", "Equilibrium", endBar + 1, equilibrium, Color.DarkOrange);
+
+            // 3. Garis Batas Bawah (Discount)
+            Chart.DrawTrendLine("PDBotLine", startBar, lastSwingLow, endBar, lastSwingLow, Color.DeepSkyBlue, 1, LineStyle.Solid);
+            Chart.DrawText("PDBotTxt", "Discount", endBar + 1, lastSwingLow, Color.DeepSkyBlue);
+        }
+
+        private void CheckVisualEqhEql()
+        {
+            if (swingPoints.Count < 3) return;
+            
+            // Collect recent Highs and Lows
+            var highs = swingPoints.Where(s => s.Type == SwingType.High).Reverse().Take(3).ToList();
+            var lows = swingPoints.Where(s => s.Type == SwingType.Low).Reverse().Take(3).ToList();
+
+            // Check EQH (Equal Highs)
+            if (highs.Count >= 2)
+            {
+                double diff = Math.Abs(highs[0].Price - highs[1].Price) / Symbol.PipSize;
+                if (diff <= EqhEqlTolerancePips)
+                {
+                    string eqhName = $"EQH_{highs[1].BarIndex}";
+                    Chart.DrawTrendLine(eqhName, highs[1].BarIndex, highs[1].Price, highs[0].BarIndex, highs[1].Price, Color.Red, 1, LineStyle.LinesDots);
+                    Chart.DrawText(eqhName + "_txt", "EQH", highs[0].BarIndex + 1, highs[1].Price, Color.Red);
+                }
+            }
+
+            // Check EQL (Equal Lows)
+            if (lows.Count >= 2)
+            {
+                double diff = Math.Abs(lows[0].Price - lows[1].Price) / Symbol.PipSize;
+                if (diff <= EqhEqlTolerancePips)
+                {
+                    string eqlName = $"EQL_{lows[1].BarIndex}";
+                    Chart.DrawTrendLine(eqlName, lows[1].BarIndex, lows[1].Price, lows[0].BarIndex, lows[1].Price, Color.DeepSkyBlue, 1, LineStyle.LinesDots);
+                    Chart.DrawText(eqlName + "_txt", "EQL", lows[0].BarIndex + 1, lows[1].Price, Color.DeepSkyBlue);
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════
         //  SMC ENGINE
         // ═══════════════════════════════════════
 
@@ -1420,17 +1575,24 @@ namespace cAlgo.Robots
             }
 
             // ── BOS & CHoCH DETECTION ──
+            int currentBar = Bars.Count - 1;
             if (smcTrend == SmcTrend.Bullish)
             {
                 // Bullish BOS: Harga menembus puncak tertinggi yang paling baru (latestSH)
                 if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
                 {
                     lastSwingHigh = latestSH.Price;
+                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
+                    lastSwingLowIndex = latestSL.BarIndex;
                     // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSH.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSH.Price;
+                        int x1 = latestSH.BarIndex;
+                        double y = latestSH.Price;
+                        Chart.DrawTrendLine($"BOS_{x1}", x1, y, currentBar, y, Color.SeaGreen, 1, LineStyle.LinesDots);
+                        Chart.DrawText($"BOS_txt_{x1}", "BOS", currentBar, y, Color.SeaGreen);
                         Print($"📊 SMC BOS ↑ Bullish continuation above {latestSH.Price:F2}");
                     }
                 }
@@ -1439,8 +1601,16 @@ namespace cAlgo.Robots
                 {
                     smcTrend = SmcTrend.Bearish;
                     lastSwingHigh = latestSH.Price;
+                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
+                    lastSwingLowIndex = latestSL.BarIndex;
                     smcStructureCount++;
+                    
+                    int x1 = latestSL.BarIndex;
+                    double y = latestSL.Price;
+                    Chart.DrawTrendLine($"CHoCH_{x1}", x1, y, currentBar, y, Color.Crimson, 1, LineStyle.LinesDots);
+                    Chart.DrawText($"CHoCH_txt_{x1}", "CHoCH", currentBar, y, Color.Crimson);
+                    
                     Print($"🔄 SMC CHoCH → Bearish! Broke below latest support at {latestSL.Price:F2}");
                 }
             }
@@ -1450,11 +1620,17 @@ namespace cAlgo.Robots
                 if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
                 {
                     lastSwingHigh = latestSH.Price;
+                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
+                    lastSwingLowIndex = latestSL.BarIndex;
                     // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSL.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSL.Price;
+                        int x1 = latestSL.BarIndex;
+                        double y = latestSL.Price;
+                        Chart.DrawTrendLine($"BOS_{x1}", x1, y, currentBar, y, Color.Crimson, 1, LineStyle.LinesDots);
+                        Chart.DrawText($"BOS_txt_{x1}", "BOS", currentBar, y, Color.Crimson);
                         Print($"📊 SMC BOS ↓ Bearish continuation below {latestSL.Price:F2}");
                     }
                 }
@@ -1463,8 +1639,16 @@ namespace cAlgo.Robots
                 {
                     smcTrend = SmcTrend.Bullish;
                     lastSwingHigh = latestSH.Price;
+                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
+                    lastSwingLowIndex = latestSL.BarIndex;
                     smcStructureCount++;
+                    
+                    int x1 = latestSH.BarIndex;
+                    double y = latestSH.Price;
+                    Chart.DrawTrendLine($"CHoCH_{x1}", x1, y, currentBar, y, Color.SeaGreen, 1, LineStyle.LinesDots);
+                    Chart.DrawText($"CHoCH_txt_{x1}", "CHoCH", currentBar, y, Color.SeaGreen);
+                        
                     Print($"🔄 SMC CHoCH → Bullish! Broke above latest resistance at {latestSH.Price:F2}");
                 }
             }
@@ -1714,27 +1898,38 @@ namespace cAlgo.Robots
         {
             int currentBar = Bars.Count - 1;
 
-            // Draw Order Blocks
+            // Identify the single latest Bullish and Bearish OB for visual display
+            var latestBullishOB = orderBlocks.LastOrDefault(ob => ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
+            var latestBearishOB = orderBlocks.LastOrDefault(ob => !ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
+
+            // Draw Order Blocks (Only Latest)
             foreach (var ob in orderBlocks)
             {
-                if (ob.IsMitigated) continue;
-                if (currentBar - ob.BarIndex > OBMaxAge) continue;
-
                 string obName = $"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}";
+                string lblName = $"OBL_{ob.BarIndex}";
+                
+                // Selalu hapus visual ob lama untuk menjaga kebersihan chart
+                try
+                {
+                    Chart.RemoveObject(obName);
+                    Chart.RemoveObject(lblName);
+                } catch { }
+
+                // Hanya gambar visual jika ob ini adalah yang TERBARU dan belum dimitigasi
+                if (ob != latestBullishOB && ob != latestBearishOB) continue;
+                if (ob.IsMitigated || currentBar - ob.BarIndex > OBMaxAge) continue;
+
                 Color obColor = ob.IsBullish
                     ? Color.FromArgb(50, 0, 200, 100)
                     : Color.FromArgb(50, 200, 50, 50);
 
                 try
                 {
-                    Chart.RemoveObject(obName);
                     var rect = Chart.DrawRectangle(obName, ob.BarIndex, ob.PriceHigh,
                         Math.Min(ob.BarIndex + OBMaxAge, currentBar + 10), ob.PriceLow, obColor);
                     if (rect != null) { rect.IsFilled = true; rect.Thickness = 1; }
 
                     // Label
-                    string lblName = $"OBL_{ob.BarIndex}";
-                    Chart.RemoveObject(lblName);
                     string lblText = ob.IsBullish ? "OB 🟩" : "OB 🟥";
                     var lbl = Chart.DrawText(lblName, lblText, ob.BarIndex, ob.IsBullish ? ob.PriceLow : ob.PriceHigh,
                         ob.IsBullish ? Color.FromArgb(200, 0, 200, 100) : Color.FromArgb(200, 200, 50, 50));
@@ -1743,20 +1938,28 @@ namespace cAlgo.Robots
                 catch { }
             }
 
-            // Draw FVGs
+            // Identify the single latest Bullish and Bearish FVG for visual display
+            var latestBullishFVG = fvgList.LastOrDefault(fvg => fvg.IsBullish && !fvg.IsFilled && currentBar - fvg.BarIndex <= OBMaxAge / 2);
+            var latestBearishFVG = fvgList.LastOrDefault(fvg => !fvg.IsBullish && !fvg.IsFilled && currentBar - fvg.BarIndex <= OBMaxAge / 2);
+
+            // Draw FVGs (Only Latest)
             foreach (var fvg in fvgList)
             {
-                if (fvg.IsFilled) continue;
-                if (currentBar - fvg.BarIndex > OBMaxAge / 2) continue;
-
                 string fvgName = $"FVG_{fvg.BarIndex}_{(fvg.IsBullish ? "B" : "S")}";
+                
+                // Selalu hapus visual lama
+                try { Chart.RemoveObject(fvgName); } catch { }
+
+                // Hanya gambar jika ini yang TERBARU dan belum tertutup penuh
+                if (fvg != latestBullishFVG && fvg != latestBearishFVG) continue;
+                if (fvg.IsFilled || currentBar - fvg.BarIndex > OBMaxAge / 2) continue;
+
                 Color fvgColor = fvg.IsBullish
                     ? Color.FromArgb(30, 0, 200, 255)
                     : Color.FromArgb(30, 255, 0, 200);
 
                 try
                 {
-                    Chart.RemoveObject(fvgName);
                     var rect = Chart.DrawRectangle(fvgName, fvg.BarIndex - 1, fvg.PriceHigh,
                         Math.Min(fvg.BarIndex + 20, currentBar + 5), fvg.PriceLow, fvgColor);
                     if (rect != null) { rect.IsFilled = true; rect.Thickness = 1; }
@@ -1772,7 +1975,7 @@ namespace cAlgo.Robots
                 string spName = $"SP_{sp.BarIndex}_{sp.Type}";
                 try
                 {
-                    Chart.RemoveObject(spName);
+                    Chart.RemoveObject(spName); 
                     string marker = sp.Type == SwingType.High ? "▼" : "▲";
                     Color spColor = sp.Type == SwingType.High ? Color.FromArgb(180, 255, 100, 100) : Color.FromArgb(180, 100, 255, 100);
                     var txt = Chart.DrawText(spName, marker, sp.BarIndex, sp.Price, spColor);
