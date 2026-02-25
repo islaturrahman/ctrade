@@ -212,9 +212,9 @@
       },
       {
         "MinValue": 10,
-        "MaxValue": 200,
+        "MaxValue": 1000,
         "Step": 1,
-        "DefaultValue": 50,
+        "DefaultValue": 200,
         "ParameterType": "Integer",
         "PropertyName": "OBMaxAge",
         "FriendlyName": "Order Block Max Age (bars)",
@@ -236,9 +236,9 @@
       },
       {
         "MinValue": 2.0,
-        "MaxValue": 100.0,
+        "MaxValue": 1000.0,
         "Step": 0.1,
-        "DefaultValue": 10.0,
+        "DefaultValue": 200.0,
         "ParameterType": "Double",
         "PropertyName": "OBMinImpulsePips",
         "FriendlyName": "OB Min Impulse (pips)",
@@ -383,6 +383,15 @@
         "ParameterType": "Double",
         "PropertyName": "FallbackSlPips",
         "FriendlyName": "Fallback SL (pips)",
+        "GroupName": "Dynamic Risk",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "UseOBTrailingStop",
+        "FriendlyName": "Use OB Trailing Stop",
         "GroupName": "Dynamic Risk",
         "IsValueVisibleInTitle": true,
         "Description": ""

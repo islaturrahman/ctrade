@@ -81,13 +81,13 @@ namespace cAlgo.Robots
         [Parameter("Swing Lookback", Group = "SMC", DefaultValue = 5, MinValue = 2, MaxValue = 20)]
         public int SwingLookback { get; set; }
 
-        [Parameter("Order Block Max Age (bars)", Group = "SMC", DefaultValue = 50, MinValue = 10, MaxValue = 200)]
+        [Parameter("Order Block Max Age (bars)", Group = "SMC", DefaultValue = 200, MinValue = 10, MaxValue = 1000)]
         public int OBMaxAge { get; set; }
 
         [Parameter("FVG Min Size (pips)", Group = "SMC", DefaultValue = 2.0, MinValue = 0.5, MaxValue = 50)]
         public double FVGMinPips { get; set; }
 
-        [Parameter("OB Min Impulse (pips)", Group = "SMC", DefaultValue = 10.0, MinValue = 2, MaxValue = 100)]
+        [Parameter("OB Min Impulse (pips)", Group = "SMC", DefaultValue = 200, MinValue = 2, MaxValue = 1000)]
         public double OBMinImpulsePips { get; set; }
 
         [Parameter("Max Active FVGs", Group = "SMC", DefaultValue = 5, MinValue = 1, MaxValue = 20)]
@@ -133,6 +133,9 @@ namespace cAlgo.Robots
 
         [Parameter("Fallback SL (pips)", Group = "Dynamic Risk", DefaultValue = 50.0)]
         public double FallbackSlPips { get; set; }
+
+        [Parameter("Use OB Trailing Stop", Group = "Dynamic Risk", DefaultValue = true)]
+        public bool UseOBTrailingStop { get; set; }
 
         // ═══════════════════════════════════════
         //  VISUAL
@@ -662,7 +665,10 @@ namespace cAlgo.Robots
 
             // SMC Engine update
             if (EnableSMC)
+            {
                 UpdateSMCEngine();
+                UpdateOBTrailingStop();
+            }
 
             // Finalize previous candle
             int prevBar = Bars.Count - 2;
@@ -776,6 +782,21 @@ namespace cAlgo.Robots
 
                 if (prevBar > setup.SetupBarIndex)
                 {
+                    // ── FILTER TREN SMC (SMART MONEY CONCEPTS) ──
+                    bool trendConflict = false;
+                    if (smcTrend != SmcTrend.Undefined)
+                    {
+                        if (setup.Direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) trendConflict = true;
+                        if (setup.Direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) trendConflict = true;
+                    }
+
+                    if (trendConflict)
+                    {
+                        Print($"  🚫 BUBBLE CANCELLED: Setup {setup.Direction} conflicts with global SMC Trend ({smcTrend})");
+                        pendingBubbleSetups.RemoveAt(i);
+                        continue;
+                    }
+
                     // Cari Konfirmasi Bubble di Candle Terbaru
                     bool hasConfirmBubble = false;
                     foreach (var lvl in fp.PriceLevels.Values)
@@ -794,23 +815,48 @@ namespace cAlgo.Robots
 
                     if (hasConfirmBubble)
                     {
-                        // Cek konfirmasi Wick (Sumbu bawah untuk Buy, Sumbu atas untuk Sell)
+                        // ── FILTER ORDERFLOW DELTA & REJECTION (PINBAR / ENGULFING) ──
                         double open = Bars.OpenPrices[prevBar];
                         double close = Bars.ClosePrices[prevBar];
                         double high = Bars.HighPrices[prevBar];
                         double low = Bars.LowPrices[prevBar];
-                        double bodyBottom = Math.Min(open, close);
-                        double bodyTop = Math.Max(open, close);
                         
-                        bool hasWick = false;
-                        double minWick = 1.0 * Symbol.PipSize; // Minimal wick 1 pip
+                        double bodyTop = Math.Max(open, close);
+                        double bodyBottom = Math.Min(open, close);
+                        double bodySize = bodyTop - bodyBottom;
+                        double upperWick = high - bodyTop;
+                        double lowerWick = bodyBottom - low;
+
+                        bool isRejection = false;
+                        double minRejectionWick = 3.0 * Symbol.PipSize; // Sumbu penolakan minimal 3 pips
+                        
+                        int totalCandleDelta = fp.TotalBuyCount - fp.TotalSellCount;
+                        bool isDeltaAligned = false;
                         
                         if (setup.Direction == TradeType.Buy)
-                            hasWick = (bodyBottom - low) >= minWick;
+                        {
+                            bool isBullishClose = close > open; // Body hijau
+                            bool isPinbar = lowerWick >= (bodySize * 1.5) && lowerWick >= minRejectionWick; // Sumbu bawah memanjang
+                            
+                            // Tolak keras jika ekor lawannya (atas) terlalu panjang (Doji Gila / Shooting Star)
+                            bool invalidUpperWick = upperWick > bodySize && upperWick > (lowerWick * 0.5);
+                            
+                            isRejection = (isBullishClose || isPinbar) && !invalidUpperWick;
+                            isDeltaAligned = totalCandleDelta >= -(fp.TotalBuyCount * 0.1); // Toleransi delta negatif super tipis jika sedang Pinbar pantulan
+                        }
                         else
-                            hasWick = (high - bodyTop) >= minWick;
+                        {
+                            bool isBearishClose = close < open; // Body merah
+                            bool isPinbar = upperWick >= (bodySize * 1.5) && upperWick >= minRejectionWick; // Sumbu atas memanjang
+                            
+                            // Tolak keras jika ekor lawannya (bawah) terlalu panjang (Doji Gila / Hammer)
+                            bool invalidLowerWick = lowerWick > bodySize && lowerWick > (upperWick * 0.5);
+                            
+                            isRejection = (isBearishClose || isPinbar) && !invalidLowerWick;
+                            isDeltaAligned = totalCandleDelta <= (fp.TotalSellCount * 0.1); // Toleransi delta positif tipis
+                        }
 
-                        if (hasWick)
+                        if (isRejection && isDeltaAligned)
                         {
                             string dirName = setup.Direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
                             Print($"💥 CONFIRMED BUBBLE SIGNAL: {dirName} | Wick & 2nd Bubble confirmed inside OB!");
@@ -1112,6 +1158,70 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
+        //  TRAILING STOP (SMC STRUCTURAL)
+        // ═══════════════════════════════════════
+
+        private void UpdateOBTrailingStop()
+        {
+            if (!UseOBTrailingStop || !EnableSMC) return;
+
+            var openPositions = Positions.FindAll(BotLabel, SymbolName);
+            if (openPositions.Length == 0) return;
+
+            double currentPrice = Bars.ClosePrices.LastValue;
+            int currentBarIdx = Bars.Count - 1;
+
+            OrderBlock nearestBullBelow = null;
+            OrderBlock nearestBearAbove = null;
+
+            // Cari OB pelindung terdekat
+            foreach (var ob in orderBlocks)
+            {
+                if (ob.IsMitigated || currentBarIdx - ob.BarIndex > OBMaxAge) continue;
+
+                if (ob.IsBullish && ob.PriceLow < currentPrice)
+                {
+                    // Temukan alas OB Bullish TERTINGGI yang masih BERSADA DI BAWAH harga saat ini
+                    if (nearestBullBelow == null || ob.PriceLow > nearestBullBelow.PriceLow)
+                        nearestBullBelow = ob;
+                }
+                else if (!ob.IsBullish && ob.PriceHigh > currentPrice)
+                {
+                    // Temukan atap OB Bearish TERENDAH yang masih BERSADA DI ATAS harga saat ini
+                    if (nearestBearAbove == null || ob.PriceHigh < nearestBearAbove.PriceHigh)
+                        nearestBearAbove = ob;
+                }
+            }
+
+            // Terapkan Trailing Stop secara bertahap kepada posisi yang terbuka
+            foreach (var position in openPositions)
+            {
+                if (position.TradeType == TradeType.Buy && nearestBullBelow != null)
+                {
+                    double newSL = Math.Round(nearestBullBelow.PriceLow - (SlBufferPips * Symbol.PipSize), Symbol.Digits);
+
+                    // Pastikan SL yang baru (newSL) BERADA DI ATAS SL LAMA, dan berjarak wajar (misal tidak kurang dari 4 pips ke bawah harga agar tidak tersambar spread liar)
+                    if ((position.StopLoss == null || newSL > position.StopLoss.Value) && newSL < currentPrice - (4 * Symbol.PipSize))
+                    {
+                        Print($"🛡️ SMC TRAIL: Geser SL BUY berlindung di dasar OB -> {newSL}");
+                        ModifyPositionAsync(position, newSL, position.TakeProfit);
+                    }
+                }
+                else if (position.TradeType == TradeType.Sell && nearestBearAbove != null)
+                {
+                    double newSL = Math.Round(nearestBearAbove.PriceHigh + (SlBufferPips * Symbol.PipSize), Symbol.Digits);
+
+                    // Pastikan SL yang baru BERADA DI BAWAH SL LAMA
+                    if ((position.StopLoss == null || newSL < position.StopLoss.Value) && newSL > currentPrice + (4 * Symbol.PipSize))
+                    {
+                        Print($"🛡️ SMC TRAIL: Geser SL SELL berlindung di atap OB -> {newSL}");
+                        ModifyPositionAsync(position, newSL, position.TakeProfit);
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════
         //  RISK MANAGEMENT (SIMPLE)
         // ═══════════════════════════════════════
 
@@ -1283,83 +1393,80 @@ namespace cAlgo.Robots
                     if (latestSL == null) latestSL = swingPoints[i];
                     else if (prevSL == null) { prevSL = swingPoints[i]; }
                 }
-                if (prevSH != null && prevSL != null) break;
+                
+                // Kita hanya butuh 1 pass untuk minimal latestSH & latestSL, prev bisa null
+                if (latestSH != null && latestSL != null && prevSH != null && prevSL != null) break;
             }
 
-            if (latestSH == null || latestSL == null || prevSH == null || prevSL == null)
+            // Ganti syarat dari 4 poin wajib (prevSH/SL wajib) menjadi cuma 2 poin (latestSH/SL)
+            if (latestSH == null || latestSL == null)
                 return;
 
             double currentClose = Bars.ClosePrices.LastValue;
             SmcTrend oldTrend = smcTrend;
 
-            // Detect BOS / CHoCH
-            if (smcTrend == SmcTrend.Bullish || smcTrend == SmcTrend.Undefined)
-            {
-                // Bullish BOS: price breaks above previous swing high
-                if (currentClose > prevSH.Price && latestSH.Price > prevSH.Price)
-                {
-                    smcTrend = SmcTrend.Bullish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    // BOS dedup: only log if level changed
-                    if (oldTrend == SmcTrend.Bullish && Math.Abs(prevSH.Price - lastBosLevel) > Symbol.PipSize)
-                    {
-                        lastBosLevel = prevSH.Price;
-                        Print($"📊 SMC BOS ↑ Bullish continuation above {prevSH.Price:F2}");
-                    }
-                }
-
-                // CHoCH: price breaks below previous swing low → bearish
-                if (currentClose < prevSL.Price && latestSL.Price < prevSL.Price)
-                {
-                    smcTrend = SmcTrend.Bearish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    smcStructureCount++;
-                    Print($"🔄 SMC CHoCH → Bearish! Broke below {prevSL.Price:F2}");
-                }
-            }
-
-            if (smcTrend == SmcTrend.Bearish)
-            {
-                // Bearish BOS: price breaks below previous swing low
-                if (currentClose < prevSL.Price && latestSL.Price < prevSL.Price)
-                {
-                    smcTrend = SmcTrend.Bearish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    // BOS dedup: only log if level changed
-                    if (oldTrend == SmcTrend.Bearish && Math.Abs(prevSL.Price - lastBosLevel) > Symbol.PipSize)
-                    {
-                        lastBosLevel = prevSL.Price;
-                        Print($"📊 SMC BOS ↓ Bearish continuation below {prevSL.Price:F2}");
-                    }
-                }
-
-                // CHoCH: price breaks above previous swing high → bullish
-                if (currentClose > prevSH.Price && latestSH.Price > prevSH.Price)
-                {
-                    smcTrend = SmcTrend.Bullish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    smcStructureCount++;
-                    Print($"🔄 SMC CHoCH → Bullish! Broke above {prevSH.Price:F2}");
-                }
-            }
-
-            // Initial trend detection
+            // ── INISIALISASI TREN (Anti-Undefined) ──
             if (smcTrend == SmcTrend.Undefined)
             {
-                bool hh = latestSH.Price > prevSH.Price;
-                bool hl = latestSL.Price > prevSL.Price;
-                bool lh = latestSH.Price < prevSH.Price;
-                bool ll = latestSL.Price < prevSL.Price;
-
-                if (hh && hl) smcTrend = SmcTrend.Bullish;
-                else if (lh && ll) smcTrend = SmcTrend.Bearish;
+                // Jika titik terdekat lebih tinggi dari sebelumnya, kita assumsi Bullish
+                if (prevSH != null && latestSH.Price > prevSH.Price) smcTrend = SmcTrend.Bullish;
+                else if (prevSL != null && latestSL.Price < prevSL.Price) smcTrend = SmcTrend.Bearish;
+                else if (currentClose > latestSH.Price) smcTrend = SmcTrend.Bullish;
+                else if (currentClose < latestSL.Price) smcTrend = SmcTrend.Bearish;
+                else smcTrend = SmcTrend.Bullish; // Default fallback jika semua sideways patah tewas
 
                 if (smcTrend != SmcTrend.Undefined)
-                    Print($"📊 SMC Initial Trend: {smcTrend}");
+                    Print($"📊 SMC Initial Trend detected: {smcTrend}");
+            }
+
+            // ── BOS & CHoCH DETECTION ──
+            if (smcTrend == SmcTrend.Bullish)
+            {
+                // Bullish BOS: Harga menembus puncak tertinggi yang paling baru (latestSH)
+                if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
+                {
+                    lastSwingHigh = latestSH.Price;
+                    lastSwingLow = latestSL.Price;
+                    // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
+                    if (Math.Abs(latestSH.Price - lastBosLevel) > Symbol.PipSize)
+                    {
+                        lastBosLevel = latestSH.Price;
+                        Print($"📊 SMC BOS ↑ Bullish continuation above {latestSH.Price:F2}");
+                    }
+                }
+                // Bearish CHoCH: Tren berbalik menjadi Bearish karena harga menjebol lembah terbaru (latestSL)
+                else if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
+                {
+                    smcTrend = SmcTrend.Bearish;
+                    lastSwingHigh = latestSH.Price;
+                    lastSwingLow = latestSL.Price;
+                    smcStructureCount++;
+                    Print($"🔄 SMC CHoCH → Bearish! Broke below latest support at {latestSL.Price:F2}");
+                }
+            }
+            else if (smcTrend == SmcTrend.Bearish)
+            {
+                // Bearish BOS: Harga menembus lembah terdalam yang paling baru (latestSL)
+                if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
+                {
+                    lastSwingHigh = latestSH.Price;
+                    lastSwingLow = latestSL.Price;
+                    // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
+                    if (Math.Abs(latestSL.Price - lastBosLevel) > Symbol.PipSize)
+                    {
+                        lastBosLevel = latestSL.Price;
+                        Print($"📊 SMC BOS ↓ Bearish continuation below {latestSL.Price:F2}");
+                    }
+                }
+                // Bullish CHoCH: Tren berbalik menjadi Bullish karena harga menembus puncak terbaru (latestSH)
+                else if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
+                {
+                    smcTrend = SmcTrend.Bullish;
+                    lastSwingHigh = latestSH.Price;
+                    lastSwingLow = latestSL.Price;
+                    smcStructureCount++;
+                    Print($"🔄 SMC CHoCH → Bullish! Broke above latest resistance at {latestSH.Price:F2}");
+                }
             }
         }
 
