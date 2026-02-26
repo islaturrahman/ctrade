@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using cAlgo.API;
@@ -7,7 +8,7 @@ using cAlgo.API.Internals;
 
 namespace cAlgo.Robots
 {
-    [Robot(AccessRights = AccessRights.None, AddIndicators = true)]
+    [Robot(AccessRights = AccessRights.FullAccess, AddIndicators = true)]
     public class BotOtonomGold : Robot
     {
         // ═══════════════════════════════════════
@@ -138,7 +139,6 @@ namespace cAlgo.Robots
         public bool UseOBTrailingStop { get; set; }
 
         // ═══════════════════════════════════════
-<<<<<<< HEAD
         //  TIME SESSIONS
         // ═══════════════════════════════════════
 
@@ -153,13 +153,20 @@ namespace cAlgo.Robots
 
         [Parameter("Trade NY Session (08:00 - 18:00 EST)", Group = "Time Session", DefaultValue = true)]
         public bool TradeNY { get; set; }
-=======
+
+        // ═══════════════════════════════════════
         //  MARKOV CONFIG
         // ═══════════════════════════════════════
 
         [Parameter("Emergency Exit Prob (%)", Group = "Markov Engine", DefaultValue = 60.0, MinValue = 10.0, MaxValue = 99.0)]
         public double MarkovExitProbability { get; set; }
->>>>>>> f4a0266 (LTS Basic Before add ML)
+
+        // ═══════════════════════════════════════
+        //  MACHINE LEARNING (DATA EXPORT)
+        // ═══════════════════════════════════════
+
+        [Parameter("Export Logic to CSV (For DDQN)", Group = "Machine Learning", DefaultValue = false)]
+        public bool ExportDataForML { get; set; }
 
         // ═══════════════════════════════════════
         //  VISUAL
@@ -295,49 +302,11 @@ namespace cAlgo.Robots
             }
 
             Positions.Closed += OnPositionClosed;
-            
-            // Tambahkan Tombol UI Manual
-            CreateDashboardControls();
         }
 
         protected override void OnTick()
         {
             ResetDailyCounters();
-        }
-
-        private void CreateDashboardControls()
-        {
-            var btnClearOB = new Button
-            {
-                Text = "🗑️ Clear All OBs",
-                BackgroundColor = Color.Firebrick,
-                ForegroundColor = Color.White,
-                Margin = new Thickness(0, 0, 10, 50),
-                Height = 30,
-                Width = 120,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom
-            };
-
-            btnClearOB.Click += args => DeleteAllOrderBlocks();
-
-            Chart.AddControl(btnClearOB);
-        }
-
-        private void DeleteAllOrderBlocks()
-        {
-            int count = orderBlocks.Count;
-            foreach (var ob in orderBlocks)
-            {
-                try
-                {
-                    Chart.RemoveObject($"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}");
-                    Chart.RemoveObject($"OBL_{ob.BarIndex}");
-                }
-                catch { }
-            }
-            orderBlocks.Clear();
-            Print($"🗑️ DASHBOARD COMMAND: {count} Order Blocks forcefully cleared!");
         }
 
         private void LogDashboard()
@@ -793,6 +762,12 @@ namespace cAlgo.Robots
 
             // ── POST-ENTRY PROTECTION: Absorption & Fake Breakout ──
             CheckPostEntryAbsorption();
+
+            // ── MACHINE LEARNING DATA EXPORT ──
+            if (ExportDataForML)
+            {
+                ExportMLDataToCSV();
+            }
 
             // Memory cleanup
             PruneOldFootprints();
@@ -1581,6 +1556,78 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
+        //  ML EXPORTER
+        // ═══════════════════════════════════════
+
+        private void ExportMLDataToCSV()
+        {
+            try
+            {
+                int barIdx = Bars.Count - 2; // Pakai bar yang baru saja ditutup
+                if (barIdx < 0) return;
+
+                double open = Bars.OpenPrices[barIdx];
+                double high = Bars.HighPrices[barIdx];
+                double low = Bars.LowPrices[barIdx];
+                double close = Bars.ClosePrices[barIdx];
+
+                // Hitung Jarak ke OB terdekat
+                double distNearBullOB = -1;
+                double distNearBearOB = -1;
+                double currentPrice = close;
+                
+                if (orderBlocks != null)
+                {
+                    OrderBlock nearBull = orderBlocks.Where(o => o.IsBullish && !o.IsMitigated).OrderBy(o => currentPrice - o.PriceHigh).FirstOrDefault(o => currentPrice >= o.PriceHigh);
+                    OrderBlock nearBear = orderBlocks.Where(o => !o.IsBullish && !o.IsMitigated).OrderBy(o => o.PriceLow - currentPrice).FirstOrDefault(o => currentPrice <= o.PriceLow);
+                    
+                    if (nearBull != null) distNearBullOB = (currentPrice - nearBull.PriceHigh) / Symbol.PipSize;
+                    if (nearBear != null) distNearBearOB = (nearBear.PriceLow - currentPrice) / Symbol.PipSize;
+                }
+
+                // Hitung Virgin Zone terdekat dari harga
+                int nearestBuyVol = 0;
+                int nearestSellVol = 0;
+                if (clusterZones != null && clusterZones.Count > 0)
+                {
+                    var activeZones = clusterZones.Where(z => virginClusters.Contains(z.ZoneId)).ToList();
+                    var nearBuyZ = activeZones.Where(z => z.Dominance == ClusterDominance.BuyDominated).OrderBy(z => Math.Abs(currentPrice - z.CenterPrice)).FirstOrDefault();
+                    var nearSellZ = activeZones.Where(z => z.Dominance == ClusterDominance.SellDominated).OrderBy(z => Math.Abs(currentPrice - z.CenterPrice)).FirstOrDefault();
+                    
+                    if (nearBuyZ != null) nearestBuyVol = nearBuyZ.TotalBuyBubbles;
+                    if (nearSellZ != null) nearestSellVol = nearSellZ.TotalSellBubbles;
+                }
+
+                // Data format: Time, Open, High, Low, Close, SMC_Trend, Markov_State, Markov_Prob_Bullish, Markov_Prob_Bearish, Dist_Bull_OB, Dist_Bear_OB, Virgin_BuyVol, Virgin_SellVol
+                int smcTrendInt = smcTrend == SmcTrend.Bullish ? 1 : smcTrend == SmcTrend.Bearish ? -1 : 0;
+                int markovStateInt = currentMarketState == MarketState.Bullish ? 1 : currentMarketState == MarketState.Bearish ? -1 : 0;
+                
+                int currStateIdx = (int)currentMarketState;
+                double probBullish = transitionMatrix[currStateIdx, (int)MarketState.Bullish];
+                double probBearish = transitionMatrix[currStateIdx, (int)MarketState.Bearish];
+
+                string csvLine = $"{Bars.OpenTimes[barIdx]:yyyy-MM-dd HH:mm:ss},{open:F2},{high:F2},{low:F2},{close:F2},{smcTrendInt},{markovStateInt},{probBullish:F3},{probBearish:F3},{distNearBullOB:F1},{distNearBearOB:F1},{nearestBuyVol},{nearestSellVol}";
+
+                string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                string filePath = Path.Combine(documentsPath, $"BotOtonomGold_ML_Data_{SymbolName}_{TimeFrame}.csv");
+                
+                bool isNew = !File.Exists(filePath);
+                using (StreamWriter sw = File.AppendText(filePath))
+                {
+                    if (isNew)
+                    {
+                        sw.WriteLine("Time,Open,High,Low,Close,SMC_Trend,Markov_State,Markov_Prob_Bullish,Markov_Prob_Bearish,Dist_Bull_OB,Dist_Bear_OB,Virgin_BuyVol,Virgin_SellVol");
+                    }
+                    sw.WriteLine(csvLine);
+                }
+            }
+            catch (Exception ex)
+            {
+                Print($"[ML EXPORT ERROR] {ex.Message}");
+            }
+        }
+
+        // ═══════════════════════════════════════
         //  SMC ENGINE
         // ═══════════════════════════════════════
 
@@ -1602,23 +1649,7 @@ namespace cAlgo.Robots
 
         private void DetectSwingPoints()
         {
-            if (swingPoints.Count == 0)
-            {
-                // Initialize from history
-                for (int b = SwingLookback; b <= Bars.Count - 1 - SwingLookback; b++)
-                {
-                    CheckSingleSwingPoint(b);
-                }
-            }
-            else
-            {
-                int checkBar = Bars.Count - 1 - SwingLookback;
-                CheckSingleSwingPoint(checkBar);
-            }
-        }
-
-        private void CheckSingleSwingPoint(int checkBar)
-        {
+            int checkBar = Bars.Count - 1 - SwingLookback;
             if (checkBar < SwingLookback) return;
 
             // Check for swing high
@@ -1679,7 +1710,7 @@ namespace cAlgo.Robots
 
         private void UpdateMarketStructure()
         {
-            if (swingPoints.Count < 2) return;
+            if (swingPoints.Count < 4) return;
 
             // Get latest swing high and swing low
             SwingPoint latestSH = null, prevSH = null;
@@ -1707,7 +1738,6 @@ namespace cAlgo.Robots
                 return;
 
             double currentClose = Bars.ClosePrices.LastValue;
-            SmcTrend oldTrend = smcTrend;
 
             // ── INISIALISASI TREN (Anti-Undefined) ──
             if (smcTrend == SmcTrend.Undefined)
@@ -1717,40 +1747,24 @@ namespace cAlgo.Robots
                 else if (prevSL != null && latestSL.Price < prevSL.Price) smcTrend = SmcTrend.Bearish;
                 else if (currentClose > latestSH.Price) smcTrend = SmcTrend.Bullish;
                 else if (currentClose < latestSL.Price) smcTrend = SmcTrend.Bearish;
-                else smcTrend = SmcTrend.Ranging; // Fallback jika belum menembus apa-apa dianggap Sideways
+                else smcTrend = SmcTrend.Bullish; // Default fallback jika semua sideways patah tewas
 
                 if (smcTrend != SmcTrend.Undefined)
                     Print($"📊 SMC Initial Trend detected: {smcTrend}");
             }
 
-            // ── DETEKSI RANGING / SIDEWAYS DARI TREN AKTIF ──
-            // Jika harga terjebak di dalam jangkauan High dan Low terbaru dan gagal membuat new high/low
-            bool isInsideRange = currentClose <= latestSH.Price && currentClose >= latestSL.Price;
-            if (isInsideRange && smcTrend != SmcTrend.Ranging)
-            {
-                // Jika sudah ranging jangan di print berulang-ulang
-                // Kita anggap konsolidasi jika gagal breakout dari level support & resistance terdekat.
-            }
-
             // ── BOS & CHoCH DETECTION ──
-            int currentBar = Bars.Count - 1;
             if (smcTrend == SmcTrend.Bullish)
             {
                 // Bullish BOS: Harga menembus puncak tertinggi yang paling baru (latestSH)
                 if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
                 {
                     lastSwingHigh = latestSH.Price;
-                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
-                    lastSwingLowIndex = latestSL.BarIndex;
                     // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSH.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSH.Price;
-                        int x1 = latestSH.BarIndex;
-                        double y = latestSH.Price;
-                        Chart.DrawTrendLine($"BOS_{x1}", x1, y, currentBar, y, Color.SeaGreen, 1, LineStyle.LinesDots);
-                        Chart.DrawText($"BOS_txt_{x1}", "BOS", currentBar, y, Color.SeaGreen);
                         Print($"📊 SMC BOS ↑ Bullish continuation above {latestSH.Price:F2}");
                     }
                 }
@@ -1759,16 +1773,7 @@ namespace cAlgo.Robots
                 {
                     smcTrend = SmcTrend.Bearish;
                     lastSwingHigh = latestSH.Price;
-                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
-                    lastSwingLowIndex = latestSL.BarIndex;
-                    smcStructureCount++;
-                    
-                    int x1 = latestSL.BarIndex;
-                    double y = latestSL.Price;
-                    Chart.DrawTrendLine($"CHoCH_{x1}", x1, y, currentBar, y, Color.Crimson, 1, LineStyle.LinesDots);
-                    Chart.DrawText($"CHoCH_txt_{x1}", "CHoCH", currentBar, y, Color.Crimson);
-                    
                     Print($"🔄 SMC CHoCH → Bearish! Broke below latest support at {latestSL.Price:F2}");
                 }
             }
@@ -1778,17 +1783,11 @@ namespace cAlgo.Robots
                 if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
                 {
                     lastSwingHigh = latestSH.Price;
-                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
-                    lastSwingLowIndex = latestSL.BarIndex;
                     // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSL.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSL.Price;
-                        int x1 = latestSL.BarIndex;
-                        double y = latestSL.Price;
-                        Chart.DrawTrendLine($"BOS_{x1}", x1, y, currentBar, y, Color.Crimson, 1, LineStyle.LinesDots);
-                        Chart.DrawText($"BOS_txt_{x1}", "BOS", currentBar, y, Color.Crimson);
                         Print($"📊 SMC BOS ↓ Bearish continuation below {latestSL.Price:F2}");
                     }
                 }
@@ -1797,16 +1796,7 @@ namespace cAlgo.Robots
                 {
                     smcTrend = SmcTrend.Bullish;
                     lastSwingHigh = latestSH.Price;
-                    lastSwingHighIndex = latestSH.BarIndex;
                     lastSwingLow = latestSL.Price;
-                    lastSwingLowIndex = latestSL.BarIndex;
-                    smcStructureCount++;
-                    
-                    int x1 = latestSH.BarIndex;
-                    double y = latestSH.Price;
-                    Chart.DrawTrendLine($"CHoCH_{x1}", x1, y, currentBar, y, Color.SeaGreen, 1, LineStyle.LinesDots);
-                    Chart.DrawText($"CHoCH_txt_{x1}", "CHoCH", currentBar, y, Color.SeaGreen);
-                        
                     Print($"🔄 SMC CHoCH → Bullish! Broke above latest resistance at {latestSH.Price:F2}");
                 }
             }

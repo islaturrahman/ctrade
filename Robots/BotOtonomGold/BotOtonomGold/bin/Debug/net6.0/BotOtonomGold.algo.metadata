@@ -305,7 +305,7 @@
       },
       {
         "MinValue": 1,
-        "MaxValue": 50,
+        "MaxValue": 500,
         "Step": 1,
         "DefaultValue": 10,
         "ParameterType": "Integer",
@@ -433,6 +433,27 @@
         "Description": ""
       },
       {
+        "MinValue": 10.0,
+        "MaxValue": 99.0,
+        "Step": 0.1,
+        "DefaultValue": 60.0,
+        "ParameterType": "Double",
+        "PropertyName": "MarkovExitProbability",
+        "FriendlyName": "Emergency Exit Prob (%)",
+        "GroupName": "Markov Engine",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "ExportDataForML",
+        "FriendlyName": "Export Logic to CSV (For DDQN)",
+        "GroupName": "Machine Learning",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
         "DefaultValue": true,
         "ParameterType": "Boolean",
         "PropertyName": "ShowBubbles",
@@ -493,7 +514,11 @@
         "Description": ""
       }
     ],
-    "Capabilities": [],
+    "Capabilities": [
+      {
+        "CapabilityType": "FullTrust"
+      }
+    ],
     "CustomAttributes": [],
     "Sets": [],
     "AddIndicatorsToChart": true,

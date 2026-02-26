@@ -397,7 +397,6 @@
         "Description": ""
       },
       {
-<<<<<<< HEAD
         "DefaultValue": false,
         "ParameterType": "Boolean",
         "PropertyName": "TradeSydney",
@@ -430,7 +429,10 @@
         "PropertyName": "TradeNY",
         "FriendlyName": "Trade NY Session (08:00 - 18:00 EST)",
         "GroupName": "Time Session",
-=======
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
         "MinValue": 10.0,
         "MaxValue": 99.0,
         "Step": 0.1,
@@ -439,7 +441,15 @@
         "PropertyName": "MarkovExitProbability",
         "FriendlyName": "Emergency Exit Prob (%)",
         "GroupName": "Markov Engine",
->>>>>>> f4a0266 (LTS Basic Before add ML)
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "ExportDataForML",
+        "FriendlyName": "Export Logic to CSV (For DDQN)",
+        "GroupName": "Machine Learning",
         "IsValueVisibleInTitle": true,
         "Description": ""
       },
@@ -504,7 +514,11 @@
         "Description": ""
       }
     ],
-    "Capabilities": [],
+    "Capabilities": [
+      {
+        "CapabilityType": "FullTrust"
+      }
+    ],
     "CustomAttributes": [],
     "Sets": [],
     "AddIndicatorsToChart": true,
