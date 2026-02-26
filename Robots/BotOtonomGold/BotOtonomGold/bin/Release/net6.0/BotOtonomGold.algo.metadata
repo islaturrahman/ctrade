@@ -305,7 +305,7 @@
       },
       {
         "MinValue": 1,
-        "MaxValue": 50,
+        "MaxValue": 500,
         "Step": 1,
         "DefaultValue": 10,
         "ParameterType": "Integer",
@@ -397,6 +397,7 @@
         "Description": ""
       },
       {
+<<<<<<< HEAD
         "DefaultValue": false,
         "ParameterType": "Boolean",
         "PropertyName": "TradeSydney",
@@ -429,6 +430,16 @@
         "PropertyName": "TradeNY",
         "FriendlyName": "Trade NY Session (08:00 - 18:00 EST)",
         "GroupName": "Time Session",
+=======
+        "MinValue": 10.0,
+        "MaxValue": 99.0,
+        "Step": 0.1,
+        "DefaultValue": 60.0,
+        "ParameterType": "Double",
+        "PropertyName": "MarkovExitProbability",
+        "FriendlyName": "Emergency Exit Prob (%)",
+        "GroupName": "Markov Engine",
+>>>>>>> f4a0266 (LTS Basic Before add ML)
         "IsValueVisibleInTitle": true,
         "Description": ""
       },

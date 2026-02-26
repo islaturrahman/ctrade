@@ -109,7 +109,7 @@ namespace cAlgo.Robots
         [Parameter("Max Concurrent Positions", Group = "Risk", DefaultValue = 3, MinValue = 1, MaxValue = 10)]
         public int MaxPositions { get; set; }
 
-        [Parameter("Max Trades Per Day", Group = "Risk", DefaultValue = 10, MinValue = 1, MaxValue = 50)]
+        [Parameter("Max Trades Per Day", Group = "Risk", DefaultValue = 10, MinValue = 1, MaxValue = 500)]
         public int MaxTradesPerDay { get; set; }
 
         [Parameter("Max Daily Loss %", Group = "Risk", DefaultValue = 3.0, MinValue = 0.5, MaxValue = 20)]
@@ -138,6 +138,7 @@ namespace cAlgo.Robots
         public bool UseOBTrailingStop { get; set; }
 
         // ═══════════════════════════════════════
+<<<<<<< HEAD
         //  TIME SESSIONS
         // ═══════════════════════════════════════
 
@@ -152,6 +153,13 @@ namespace cAlgo.Robots
 
         [Parameter("Trade NY Session (08:00 - 18:00 EST)", Group = "Time Session", DefaultValue = true)]
         public bool TradeNY { get; set; }
+=======
+        //  MARKOV CONFIG
+        // ═══════════════════════════════════════
+
+        [Parameter("Emergency Exit Prob (%)", Group = "Markov Engine", DefaultValue = 60.0, MinValue = 10.0, MaxValue = 99.0)]
+        public double MarkovExitProbability { get; set; }
+>>>>>>> f4a0266 (LTS Basic Before add ML)
 
         // ═══════════════════════════════════════
         //  VISUAL
@@ -220,11 +228,17 @@ namespace cAlgo.Robots
         private double lastBosLevel = 0;  // BOS dedup
         private int lastSmcSignalBar = -999; // SMC signal cooldown
 
-        // Risk State
+        // Trading State
+        private int dailyTradeCount = 0;
         private double dailyStartBalance;
-        private int dailyTradeCount;
         private DateTime lastTradeDay;
-        private int lastTradeBarIndex = -999;
+        private int lastTradeBarIndex = -1;
+
+        // Markov Chain State Tracking
+        private MarketState currentMarketState = MarketState.Flat;
+        private List<MarketState> stateHistory = new List<MarketState>();
+        private double[,] transitionMatrix = new double[3, 3];
+        private const int MarkovLookback = 100;
 
         // Stats
         private int totalSignals = 0;
@@ -742,6 +756,11 @@ namespace cAlgo.Robots
 
         protected override void OnBar()
         {
+            if (Bars.Count < 2) return;
+            
+            // ── MARKOV CHAIN UPDATE ──
+            UpdateMarketState();
+
             UpdateHTFTrend();
 
             // SMC Engine update
@@ -772,8 +791,108 @@ namespace cAlgo.Robots
             // ── SIGNAL: Order Flow trigger + SMC confluence ──
             CheckVirginClusterSignal();
 
+            // ── POST-ENTRY PROTECTION: Absorption & Fake Breakout ──
+            CheckPostEntryAbsorption();
+
             // Memory cleanup
             PruneOldFootprints();
+        }
+
+        // ═══════════════════════════════════════
+        //  EARLY EXIT LOGIC (ABSORPTION PROTECTION)
+        // ═══════════════════════════════════════
+
+        private void CheckPostEntryAbsorption()
+        {
+            var openPositions = Positions.FindAll(BotLabel, SymbolName);
+            if (openPositions.Length == 0) return;
+
+            int currentBar = Bars.Count - 1;
+
+            foreach (var pos in openPositions)
+            {
+                // Fitur ini khusus untuk trade yang masih muda (1-3 candle setelah entry)
+                int tradeAgeBars = currentBar - lastTradeBarIndex;
+                if (tradeAgeBars < 1 || tradeAgeBars > 3) continue;
+
+                // Cek apakah ada cluster lawan (Tembok) yang valid baru terbentuk
+                bool hasOppositeWall = false;
+                double wallPrice = 0;
+
+                foreach (var zone in clusterZones)
+                {
+                    if (zone.Dominance == ClusterDominance.Consolidated) continue;
+                    
+                    // Kita hanya peduli pada tembok yang baru terbentuk setelah kita masuk
+                    if (zone.LastBarIndex < lastTradeBarIndex) continue;
+
+                    // Tembok seller untuk posisi Buy, Tembok buyer untuk posisi Sell
+                    if (pos.TradeType == TradeType.Buy && zone.Dominance == ClusterDominance.SellDominated)
+                    {
+                        hasOppositeWall = true;
+                        wallPrice = zone.CenterPrice;
+                        break;
+                    }
+                    else if (pos.TradeType == TradeType.Sell && zone.Dominance == ClusterDominance.BuyDominated)
+                    {
+                        hasOppositeWall = true;
+                        wallPrice = zone.CenterPrice;
+                        break;
+                    }
+                }
+
+                if (!hasOppositeWall) continue;
+
+                // Evaluasi Rejection (Penolakan & Engulfing) di Candle Terakhir
+                int prevBar = currentBar - 1;
+                double open = Bars.OpenPrices[prevBar];
+                double close = Bars.ClosePrices[prevBar];
+                double high = Bars.HighPrices[prevBar];
+                double low = Bars.LowPrices[prevBar];
+
+                double entryPrice = pos.EntryPrice;
+
+                bool isRejected = false;
+
+                if (pos.TradeType == TradeType.Buy)
+                {
+                    bool failToBreakWall = high >= wallPrice && close < wallPrice;
+                    
+                    // Cek Probabilitas Markov dari Kondisi Saat Ini ke Bearish
+                    int currStateIdx = (int)currentMarketState;
+                    int bearStateIdx = (int)MarketState.Bearish;
+                    double probBearish = transitionMatrix[currStateIdx, bearStateIdx];
+                    double threshold = MarkovExitProbability / 100.0;
+
+                    if (failToBreakWall && probBearish >= threshold) 
+                    {
+                        isRejected = true;
+                        Print($"🔮 MARKOV ALERT: {probBearish * 100:F1}% probability of dropping to Bearish state >= {MarkovExitProbability}% limit!");
+                    }
+                }
+                else
+                {
+                    bool failToBreakWall = low <= wallPrice && close > wallPrice;
+                    
+                    // Cek Probabilitas Markov dari Kondisi Saat Ini ke Bullish
+                    int currStateIdx = (int)currentMarketState;
+                    int bullStateIdx = (int)MarketState.Bullish;
+                    double probBullish = transitionMatrix[currStateIdx, bullStateIdx];
+                    double threshold = MarkovExitProbability / 100.0;
+
+                    if (failToBreakWall && probBullish >= threshold) 
+                    {
+                        isRejected = true;
+                        Print($"🔮 MARKOV ALERT: {probBullish * 100:F1}% probability of rising to Bullish state >= {MarkovExitProbability}% limit!");
+                    }
+                }
+
+                if (isRejected)
+                {
+                    Print($"🚨 EMERGENCY EXIT: {pos.TradeType} Absorption Detected! Fail to break wall at {wallPrice:F2}. Cutting loss early.");
+                    ClosePositionAsync(pos);
+                }
+            }
         }
 
         // ═══════════════════════════════════════
@@ -806,6 +925,13 @@ namespace cAlgo.Robots
                     // Syarat Ketiga (Golden Rule): Zona tersebut secara harfiah berada DI DALAM Order Block
                     if (IsInOrderBlock(zone.CenterPrice, direction))
                     {
+                        // ── FILTER TREN SMC SEJAK AWAL ──
+                        if (smcTrend != SmcTrend.Undefined && smcTrend != SmcTrend.Ranging)
+                        {
+                            if (direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) continue;
+                            if (direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) continue;
+                        }
+
                         string dir = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
                         Print($"💎 CHECK ENTRY TRIGGERED: {dir} | Virgin Zone inside {dir} OB | Strong Delta: {totalBubbles} bubbles!");
 
@@ -973,6 +1099,13 @@ namespace cAlgo.Robots
 
                     if (inOB && !inOppOB)
                     {
+                        // ── FILTER TREN SMC SEJAK AWAL ──
+                        if (smcTrend != SmcTrend.Undefined && smcTrend != SmcTrend.Ranging)
+                        {
+                            if (direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) continue;
+                            if (direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) continue;
+                        }
+
                         // Mendaftarkan setup jika belum ada
                         bool exists = false;
                         foreach (var setup in pendingBubbleSetups)
@@ -1469,7 +1602,23 @@ namespace cAlgo.Robots
 
         private void DetectSwingPoints()
         {
-            int checkBar = Bars.Count - 1 - SwingLookback;
+            if (swingPoints.Count == 0)
+            {
+                // Initialize from history
+                for (int b = SwingLookback; b <= Bars.Count - 1 - SwingLookback; b++)
+                {
+                    CheckSingleSwingPoint(b);
+                }
+            }
+            else
+            {
+                int checkBar = Bars.Count - 1 - SwingLookback;
+                CheckSingleSwingPoint(checkBar);
+            }
+        }
+
+        private void CheckSingleSwingPoint(int checkBar)
+        {
             if (checkBar < SwingLookback) return;
 
             // Check for swing high
@@ -1530,7 +1679,7 @@ namespace cAlgo.Robots
 
         private void UpdateMarketStructure()
         {
-            if (swingPoints.Count < 4) return;
+            if (swingPoints.Count < 2) return;
 
             // Get latest swing high and swing low
             SwingPoint latestSH = null, prevSH = null;
@@ -1568,10 +1717,19 @@ namespace cAlgo.Robots
                 else if (prevSL != null && latestSL.Price < prevSL.Price) smcTrend = SmcTrend.Bearish;
                 else if (currentClose > latestSH.Price) smcTrend = SmcTrend.Bullish;
                 else if (currentClose < latestSL.Price) smcTrend = SmcTrend.Bearish;
-                else smcTrend = SmcTrend.Bullish; // Default fallback jika semua sideways patah tewas
+                else smcTrend = SmcTrend.Ranging; // Fallback jika belum menembus apa-apa dianggap Sideways
 
                 if (smcTrend != SmcTrend.Undefined)
                     Print($"📊 SMC Initial Trend detected: {smcTrend}");
+            }
+
+            // ── DETEKSI RANGING / SIDEWAYS DARI TREN AKTIF ──
+            // Jika harga terjebak di dalam jangkauan High dan Low terbaru dan gagal membuat new high/low
+            bool isInsideRange = currentClose <= latestSH.Price && currentClose >= latestSL.Price;
+            if (isInsideRange && smcTrend != SmcTrend.Ranging)
+            {
+                // Jika sudah ranging jangan di print berulang-ulang
+                // Kita anggap konsolidasi jika gagal breakout dari level support & resistance terdekat.
             }
 
             // ── BOS & CHoCH DETECTION ──
@@ -2169,13 +2327,81 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
+        //  MARKOV CHAIN LOGIC
+        // ═══════════════════════════════════════
+
+        private void UpdateMarketState()
+        {
+            int prevBar = Bars.Count - 2;
+            if (prevBar < 0) return;
+
+            double open = Bars.OpenPrices[prevBar];
+            double close = Bars.ClosePrices[prevBar];
+            double pipSize = Symbol.PipSize;
+
+            // Define states based on 2-pip body threshold
+            MarketState newState;
+            if (close > open + (2 * pipSize))
+                newState = MarketState.Bullish;
+            else if (close < open - (2 * pipSize))
+                newState = MarketState.Bearish;
+            else
+                newState = MarketState.Flat;
+
+            currentMarketState = newState;
+            stateHistory.Add(newState);
+
+            if (stateHistory.Count > MarkovLookback)
+            {
+                stateHistory.RemoveAt(0);
+            }
+
+            UpdateTransitionMatrix();
+        }
+
+        private void UpdateTransitionMatrix()
+        {
+            if (stateHistory.Count < 2) return;
+
+            int[,] transitionCount = new int[3, 3];
+            int[] stateCount = new int[3];
+
+            // Count occurrences
+            for (int i = 0; i < stateHistory.Count - 1; i++)
+            {
+                int fromState = (int)stateHistory[i];
+                int toState = (int)stateHistory[i + 1];
+
+                transitionCount[fromState, toState]++;
+                stateCount[fromState]++;
+            }
+
+            // Calculate probabilities
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    if (stateCount[i] > 0)
+                    {
+                        transitionMatrix[i, j] = (double)transitionCount[i, j] / stateCount[i];
+                    }
+                    else
+                    {
+                        transitionMatrix[i, j] = 0; // No historical data for this transition
+                    }
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════
         //  ENUMS & DATA CLASSES
         // ═══════════════════════════════════════
 
         public enum TrendDirection { Up, Down, Neutral }
         public enum ClusterDominance { BuyDominated, SellDominated, Consolidated }
-        public enum SmcTrend { Bullish, Bearish, Undefined }
+        public enum SmcTrend { Bullish, Bearish, Ranging, Undefined }
         public enum SwingType { High, Low }
+        public enum MarketState { Bullish, Bearish, Flat }
 
         private class CandleFootprint
         {
