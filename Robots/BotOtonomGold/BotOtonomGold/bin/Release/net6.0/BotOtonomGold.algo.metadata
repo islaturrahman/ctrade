@@ -238,7 +238,7 @@
         "MinValue": 2.0,
         "MaxValue": 1000.0,
         "Step": 0.1,
-        "DefaultValue": 200.0,
+        "DefaultValue": 10.0,
         "ParameterType": "Double",
         "PropertyName": "OBMinImpulsePips",
         "FriendlyName": "OB Min Impulse (pips)",

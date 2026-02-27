@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using cAlgo.API;
@@ -69,6 +68,7 @@ namespace cAlgo.Robots
         [Parameter("Enable SMA Filter", Group = "SMA Filter", DefaultValue = true)]
         public bool EnableSMAFilter { get; set; }
 
+        // BUG FIX #1: Parameter ini sekarang benar-benar digunakan
         [Parameter("SMA Period", Group = "SMA Filter", DefaultValue = 50, MinValue = 5, MaxValue = 200)]
         public int SmaPeriod { get; set; }
 
@@ -88,7 +88,7 @@ namespace cAlgo.Robots
         [Parameter("FVG Min Size (pips)", Group = "SMC", DefaultValue = 2.0, MinValue = 0.5, MaxValue = 50)]
         public double FVGMinPips { get; set; }
 
-        [Parameter("OB Min Impulse (pips)", Group = "SMC", DefaultValue = 200, MinValue = 2, MaxValue = 1000)]
+        [Parameter("OB Min Impulse (pips)", Group = "SMC", DefaultValue = 10.0, MinValue = 2, MaxValue = 1000)]
         public double OBMinImpulsePips { get; set; }
 
         [Parameter("Max Active FVGs", Group = "SMC", DefaultValue = 5, MinValue = 1, MaxValue = 20)]
@@ -208,7 +208,7 @@ namespace cAlgo.Robots
         private HashSet<string> virginClusters = new HashSet<string>();
         private HashSet<string> testedClusters = new HashSet<string>();
 
-        // ── PENDING BUBBLE SETUPS ──
+        // Pending Bubble Setups
         private class PendingBubbleSetup
         {
             public TradeType Direction { get; set; }
@@ -234,9 +234,8 @@ namespace cAlgo.Robots
         private int lastSwingHighIndex = 0;
         private double lastSwingLow = double.MaxValue;
         private int lastSwingLowIndex = 0;
-        private int smcStructureCount = 0;
-        private double lastBosLevel = 0;  // BOS dedup
-        private int lastSmcSignalBar = -999; // SMC signal cooldown
+        private double lastBosLevel = 0;
+        private int lastSmcSignalBar = -999;
 
         // Trading State
         private int dailyTradeCount = 0;
@@ -244,7 +243,10 @@ namespace cAlgo.Robots
         private DateTime lastTradeDay;
         private int lastTradeBarIndex = -1;
 
-        // Markov Chain State Tracking
+        // BUG FIX #2: Flag untuk mencegah double entry dalam satu bar
+        private bool _entryExecutedThisBar = false;
+
+        // Markov Chain
         private MarketState currentMarketState = MarketState.Flat;
         private List<MarketState> stateHistory = new List<MarketState>();
         private double[,] transitionMatrix = new double[3, 3];
@@ -264,17 +266,18 @@ namespace cAlgo.Robots
         {
             candleFootprints = new Dictionary<int, CandleFootprint>();
             ticks = MarketData.GetTicks();
-            
-            // Initialize Indicators
-            sma = Indicators.SimpleMovingAverage(Bars.ClosePrices, 100);
+
+            // BUG FIX #1: Gunakan SmaPeriod dari parameter, BUKAN hardcoded 100
+            sma = Indicators.SimpleMovingAverage(Bars.ClosePrices, SmaPeriod);
             atr = Indicators.AverageTrueRange(AtrPeriod, MovingAverageType.Simple);
 
-            // Print Initial Status
-            Print($"🤖 {BotLabel} Started | OB-Trail Removed, using Markov-ATR Trail ({UseMarkovATRTrailingStop})");
+            // BUG FIX #3: Inisialisasi dailyStartBalance di OnStart agar daily loss check benar
+            dailyStartBalance = Account.Balance;
             dailyTradeCount = 0;
             lastTradeDay = Server.Time.Date;
 
-            // HTF init
+            Print($"🤖 {BotLabel} Started | SMA={SmaPeriod} | ATR={AtrPeriod} | MarkovTrail={UseMarkovATRTrailingStop}");
+
             if (EnableHTFFilter)
             {
                 try
@@ -293,7 +296,7 @@ namespace cAlgo.Robots
             Print("  BOT OTONOM GOLD — Order Flow + SMC Concept");
             Print("═══════════════════════════════════════════════════");
             Print($"Symbol: {SymbolName} | TF: {TimeFrame}");
-            Print($"SMA: {SmaPeriod} | HTF: {EnableHTFFilter} ({HTFTimeframe})");
+            Print($"SMA({SmaPeriod}) | HTF: {EnableHTFFilter} ({HTFTimeframe})");
             Print($"SMC: {EnableSMC} | SwingLB={SwingLookback} | OBAge={OBMaxAge}");
             Print($"Virgin: MinBubbles={MinBubblesForVirgin} | MaxAge={MaxVirginZoneAge}");
             Print("═══════════════════════════════════════════════════");
@@ -316,144 +319,63 @@ namespace cAlgo.Robots
             ResetDailyCounters();
         }
 
-        private void LogDashboard()
+        protected override void OnBar()
         {
-            int currentBar = Bars.Count - 1;
-            double price = Bars.ClosePrices.LastValue;
-            DateTime barTime = Bars.OpenTimes.LastValue;
+            if (Bars.Count < 2) return;
 
-            Print("─────────────────────────────────────────────");
-            Print($"  BAR #{currentBar} | {barTime:HH:mm:ss} | Price: {price:F2}");
-            Print("─────────────────────────────────────────────");
+            // BUG FIX #2: Reset flag entry di awal setiap bar baru
+            _entryExecutedThisBar = false;
 
-            // ── SMA ──
-            if (EnableSMAFilter)
-            {
-                double smaValue = sma.Result.LastValue;
-                double dist = (price - smaValue) / Symbol.PipSize;
-                string pos = price > smaValue ? "ABOVE ▲" : "BELOW ▼";
-                Print($"  📈 SMA({SmaPeriod}): {smaValue:F2} | Price {pos} ({dist:+0.0;-0.0} pips)");
-            }else{
-                Print("  📈 SMA: Disabled");
-            }
+            // Update Markov state
+            UpdateMarketState();
 
-            // ── HTF TREND ──
-            if (EnableHTFFilter)
-            {
-                string htfIcon = htfTrend == TrendDirection.Up ? "📈 UP" :
-                                 htfTrend == TrendDirection.Down ? "📉 DOWN" : "➡️ NEUTRAL";
-                Print($"  🕐 HTF({HTFTimeframe}): {htfIcon}");
-            }
-            else
-            {
-                Print("  🕐 HTF: Disabled");
-            }
+            // Update HTF
+            UpdateHTFTrend();
 
-            // ── SMC ──
+            // SMC Engine
             if (EnableSMC)
             {
-                string smcIcon = smcTrend == SmcTrend.Bullish ? "🟢 BULLISH" :
-                                 smcTrend == SmcTrend.Bearish ? "🔴 BEARISH" : "⚪ UNDEFINED";
-                Print($"  🏦 SMC Trend: {smcIcon}");
-
-                // Swing Points
-                SwingPoint lastSH = null, lastSL = null;
-                for (int i = swingPoints.Count - 1; i >= 0; i--)
-                {
-                    if (lastSH == null && swingPoints[i].Type == SwingType.High) lastSH = swingPoints[i];
-                    if (lastSL == null && swingPoints[i].Type == SwingType.Low) lastSL = swingPoints[i];
-                    if (lastSH != null && lastSL != null) break;
-                }
-                string shStr = lastSH != null ? $"{lastSH.Price:F2} (bar {lastSH.BarIndex})" : "—";
-                string slStr = lastSL != null ? $"{lastSL.Price:F2} (bar {lastSL.BarIndex})" : "—";
-                Print($"  🔺 Swing H: {shStr} | 🔻 Swing L: {slStr}");
-
-                // Order Blocks
-                int activeOBBull = 0, activeOBBear = 0;
-                OrderBlock nearestBullOB = null, nearestBearOB = null;
-                foreach (var ob in orderBlocks)
-                {
-                    if (ob.IsMitigated || currentBar - ob.BarIndex > OBMaxAge) continue;
-                    if (ob.IsBullish)
-                    {
-                        activeOBBull++;
-                        if (nearestBullOB == null || Math.Abs(price - ob.PriceHigh) < Math.Abs(price - nearestBullOB.PriceHigh))
-                            nearestBullOB = ob;
-                    }
-                    else
-                    {
-                        activeOBBear++;
-                        if (nearestBearOB == null || Math.Abs(price - ob.PriceLow) < Math.Abs(price - nearestBearOB.PriceLow))
-                            nearestBearOB = ob;
-                    }
-                }
-                Print($"  📦 OB Active: {activeOBBull} Bull + {activeOBBear} Bear = {activeOBBull + activeOBBear}");
-                if (nearestBullOB != null)
-                    Print($"     ↳ Nearest Bull OB: {nearestBullOB.PriceLow:F2}-{nearestBullOB.PriceHigh:F2} ({((price - nearestBullOB.PriceHigh) / Symbol.PipSize):+0.0;-0.0} pips)");
-                if (nearestBearOB != null)
-                    Print($"     ↳ Nearest Bear OB: {nearestBearOB.PriceLow:F2}-{nearestBearOB.PriceHigh:F2} ({((nearestBearOB.PriceLow - price) / Symbol.PipSize):+0.0;-0.0} pips)");
-
-                // FVGs
-                int activeFVGBull = 0, activeFVGBear = 0;
-                foreach (var fvg in fvgList)
-                {
-                    if (fvg.IsFilled || currentBar - fvg.BarIndex > OBMaxAge / 2) continue;
-                    if (fvg.IsBullish) activeFVGBull++;
-                    else activeFVGBear++;
-                }
-                Print($"  ⚡ FVG Active: {activeFVGBull} Bull + {activeFVGBear} Bear = {activeFVGBull + activeFVGBear}");
-
-                // Price position relative to SMC zones
-                bool inBullOB = IsInOrderBlock(price, TradeType.Buy);
-                bool inBearOB = IsInOrderBlock(price, TradeType.Sell);
-                bool inBullFVG = IsInFairValueGap(price, TradeType.Buy);
-                bool inBearFVG = IsInFairValueGap(price, TradeType.Sell);
-                if (inBullOB || inBearOB || inBullFVG || inBearFVG)
-                {
-                    string zones = "";
-                    if (inBullOB) zones += "Bull-OB ";
-                    if (inBearOB) zones += "Bear-OB ";
-                    if (inBullFVG) zones += "Bull-FVG ";
-                    if (inBearFVG) zones += "Bear-FVG ";
-                    Print($"  🎯 PRICE IN ZONE: {zones.Trim()}");
-                }
+                UpdateSMCEngine();
+                if (ShowPDZones) DrawVisualPDZones();
+                if (ShowEqhEql) CheckVisualEqhEql();
             }
-            else
+
+            // Trailing Stop Markov-ATR
+            UpdateMarkovTrailingStop();
+
+            // Finalize candle sebelumnya (hanya candle yang sudah closed)
+            int prevBar = Bars.Count - 2;
+            if (prevBar >= 0 && candleFootprints.ContainsKey(prevBar) && !candleFootprints[prevBar].IsFinalized)
+                FinalizeCandle(candleFootprints[prevBar]);
+
+            // Dashboard log
+            LogDashboard();
+
+            // ── SESSION CHECK: cek waktu trading sebelum semua entry logic ──
+            if (!IsValidSessionToTrade())
             {
-                Print("  🏦 SMC: Disabled");
+                PruneOldFootprints();
+                return;
             }
 
-            // ── ORDER FLOW ──
-            int virginCount = virginClusters.Count;
-            int totalZones = clusterZones.Count;
-            int buyZones = 0, sellZones = 0;
-            ClusterZone nearestVirgin = null;
-            double nearestDist = double.MaxValue;
+            // ── ENTRY LOGIC (berurutan, berhenti setelah pertama kali execute) ──
+            // Urutan: CheckEntry → CheckBubbleInSmcSignal → CheckVirginClusterSignal
+            // BUG FIX #2: Semua entry method memeriksa _entryExecutedThisBar
 
-            foreach (var zone in clusterZones)
-            {
-                if (!virginClusters.Contains(zone.ZoneId)) continue;
-                int totalBubbles = zone.TotalBuyBubbles + zone.TotalSellBubbles;
-                if (totalBubbles < MinBubblesForVirgin) continue;
-                if (zone.Dominance == ClusterDominance.BuyDominated) buyZones++;
-                else if (zone.Dominance == ClusterDominance.SellDominated) sellZones++;
+            CheckEntry();
 
-                double dist = Math.Abs(price - zone.CenterPrice);
-                if (dist < nearestDist) { nearestDist = dist; nearestVirgin = zone; }
-            }
-            Print($"  🫧 OrderFlow: {virginCount} virgin zones ({buyZones} Buy / {sellZones} Sell) | Total: {totalZones}");
-            if (nearestVirgin != null)
-            {
-                double distPips = (price - nearestVirgin.CenterPrice) / Symbol.PipSize;
-                int bub = nearestVirgin.TotalBuyBubbles + nearestVirgin.TotalSellBubbles;
-                Print($"     ↳ Nearest Virgin: {nearestVirgin.CenterPrice:F2} ({distPips:+0.0;-0.0} pips) | {nearestVirgin.Dominance} | {bub} bubbles");
-            }
+            if (!_entryExecutedThisBar)
+                CheckBubbleInSmcSignal();
 
-            // ── RISK STATUS ──
-            var openPos = Positions.FindAll(BotLabel, SymbolName);
-            double dailyPnL = Account.Equity - dailyStartBalance;
-            Print($"  💰 Positions: {openPos.Length}/{MaxPositions} | Day Trades: {dailyTradeCount}/{MaxTradesPerDay} | Day P&L: {dailyPnL:+0.00;-0.00}");
-            Print("─────────────────────────────────────────────");
+            if (!_entryExecutedThisBar)
+                CheckVirginClusterSignal();
+
+            // ── REVERSAL PROTECTION (SETELAH entry, bukan sebelum) ──
+            // BUG FIX #4: CheckSmcReversal dipindah ke AKHIR agar tidak
+            // langsung menutup posisi yang baru saja dibuka di bar yang sama
+            CheckSmcReversal();
+
+            PruneOldFootprints();
         }
 
         protected override void OnStop()
@@ -470,6 +392,11 @@ namespace cAlgo.Robots
 
         // ═══════════════════════════════════════
         //  TICK PROCESSING (ORDER FLOW ENGINE)
+        // BUG FIX #5: Klasifikasi tick Buy/Sell yang benar
+        //  - Buy = tick yang memukul ASK (aggressor buyer)
+        //  - Sell = tick yang memukul BID (aggressor seller)
+        //  Metode: bandingkan mid-price sekarang vs mid-price sebelumnya
+        //  sebagai proxy agressor side (karena cAlgo tidak expose Last Price)
         // ═══════════════════════════════════════
 
         private void OnNewTick(TicksTickEventArgs obj)
@@ -495,10 +422,10 @@ namespace cAlgo.Robots
             for (int i = start; i < tickCount; i++)
                 ProcessSingleTick(ticks[i]);
 
-            // Finalize all historical candles
             foreach (var kvp in candleFootprints.Where(x => !x.Value.IsFinalized).OrderBy(x => x.Key))
                 kvp.Value.IsFinalized = true;
 
+            // BUG FIX #6: Cluster build dari history menggunakan lookup O(1)
             BuildClusterZonesFromHistory();
             Print($"✓ Complete! Zones: {clusterZones.Count}");
         }
@@ -520,29 +447,50 @@ namespace cAlgo.Robots
             var fp = candleFootprints[barIndex];
             if (fp.IsFinalized) return;
 
-            // Determine buy/sell via tick direction
+            // BUG FIX #5: Gunakan mid-price comparison sebagai aggressor proxy
+            // Lebih akurat dari sekedar membandingkan Ask vs Ask sebelumnya
             bool isBuy = false, isSell = false;
 
-            if (fp.LastAsk > 0 && tick.Ask > fp.LastAsk)
-                isBuy = true;
-            else if (fp.LastBid > 0 && tick.Bid < fp.LastBid)
-                isSell = true;
-            else if (fp.LastAsk > 0)
+            if (fp.LastBid > 0 && fp.LastAsk > 0)
             {
-                double midLast = (fp.LastBid + fp.LastAsk) / 2.0;
-                double midNow = (tick.Bid + tick.Ask) / 2.0;
-                if (midNow > midLast) isBuy = true;
-                else if (midNow < midLast) isSell = true;
+                double midPrev = (fp.LastBid + fp.LastAsk) / 2.0;
+                double midNow  = (tick.Bid + tick.Ask) / 2.0;
+
+                // Jika mid naik → buyer aggressor (hit ASK)
+                if (midNow > midPrev + Symbol.TickSize * 0.5)
+                    isBuy = true;
+                // Jika mid turun → seller aggressor (hit BID)
+                else if (midNow < midPrev - Symbol.TickSize * 0.5)
+                    isSell = true;
+                // Jika tidak bergerak, cek apakah tick ini dekat ASK atau BID
+                else
+                {
+                    double spread = tick.Ask - tick.Bid;
+                    if (spread > 0)
+                    {
+                        double ratio = (midNow - tick.Bid) / spread;
+                        if (ratio > 0.6) isBuy = true;
+                        else if (ratio < 0.4) isSell = true;
+                    }
+                }
+            }
+            else
+            {
+                // First tick in candle: tidak bisa determine arah, skip clasifikasi
+                fp.LastBid = tick.Bid;
+                fp.LastAsk = tick.Ask;
+                return;
             }
 
-            double price = isBuy ? tick.Ask : tick.Bid;
-            double rounded = RoundToPip(price);
+            // BUG FIX #7: RoundToPip untuk Gold menggunakan step $0.10 bukan $50
+            double price = (tick.Bid + tick.Ask) / 2.0;
+            double rounded = RoundToPipGold(price);
 
             if (!fp.PriceLevels.ContainsKey(rounded))
                 fp.PriceLevels[rounded] = new PriceLevel { Price = rounded };
 
             var level = fp.PriceLevels[rounded];
-            if (isBuy) { level.BuyCount++; fp.TotalBuyCount++; }
+            if (isBuy)  { level.BuyCount++;  fp.TotalBuyCount++;  }
             else if (isSell) { level.SellCount++; fp.TotalSellCount++; }
 
             level.TotalCount++;
@@ -551,8 +499,20 @@ namespace cAlgo.Robots
             fp.LastAsk = tick.Ask;
         }
 
+        // BUG FIX #7: Fungsi rounding khusus Gold (XAUUSD)
+        // Gold bergerak dalam tick $0.01, pip = $0.10
+        // Cluster dengan toleransi 3 pip = $0.30 sudah cukup granular
+        private double RoundToPipGold(double price)
+        {
+            double pipSize = Symbol.PipSize; // Untuk XAUUSD biasanya 0.1
+            // Bulatkan ke pip terdekat
+            return Math.Round(price / pipSize) * pipSize;
+        }
+
         // ═══════════════════════════════════════
         //  CLUSTER ZONE ENGINE
+        //  BUG FIX #6: Menggunakan Dictionary<double, ClusterZone> sebagai
+        //  lookup O(1) untuk menghindari nested loop O(n²) yang menyebabkan freeze
         // ═══════════════════════════════════════
 
         private void BuildClusterZonesFromHistory()
@@ -562,6 +522,10 @@ namespace cAlgo.Robots
             testedClusters.Clear();
 
             double tolerancePrice = ClusterTolerancePips * Symbol.PipSize;
+
+            // BUG FIX #6: Gunakan Dictionary untuk lookup cluster yang ada
+            // Key = harga center yang sudah dibulatkan, Value = index di clusterZones
+            var zoneLookup = new Dictionary<double, int>();
 
             foreach (var candleKvp in candleFootprints.OrderBy(x => x.Key))
             {
@@ -576,18 +540,26 @@ namespace cAlgo.Robots
                     if (absDelta < MinDeltaPerLevel || level.TotalCount < MinVolumePerLevel)
                         continue;
 
-                    // Try to add to existing zone
+                    // Cari zona terdekat di sekitar harga ini dengan toleransi
+                    double lookupKey = Math.Round(levelPrice / tolerancePrice) * tolerancePrice;
+                    
+                    // Coba beberapa kandidat key di sekitar harga
                     bool added = false;
-                    foreach (var zone in clusterZones)
+                    for (int offset = -1; offset <= 1 && !added; offset++)
                     {
-                        if (Math.Abs(levelPrice - zone.CenterPrice) <= tolerancePrice)
+                        double candidateKey = lookupKey + offset * tolerancePrice;
+                        if (zoneLookup.TryGetValue(Math.Round(candidateKey, 5), out int zoneIdx))
                         {
-                            if (delta > 0) { zone.TotalBuyBubbles++; zone.TotalBuyVolume += level.BuyCount; }
-                            else { zone.TotalSellBubbles++; zone.TotalSellVolume += level.SellCount; }
-                            zone.LastBarIndex = fp.BarIndex;
-                            zone.CenterPrice = (zone.CenterPrice + levelPrice) / 2.0;
-                            added = true;
-                            break;
+                            var zone = clusterZones[zoneIdx];
+                            if (Math.Abs(levelPrice - zone.CenterPrice) <= tolerancePrice)
+                            {
+                                if (delta > 0) { zone.TotalBuyBubbles++; zone.TotalBuyVolume += level.BuyCount; }
+                                else           { zone.TotalSellBubbles++; zone.TotalSellVolume += level.SellCount; }
+                                zone.LastBarIndex = fp.BarIndex;
+                                // Update center price (rolling average)
+                                zone.CenterPrice = (zone.CenterPrice + levelPrice) / 2.0;
+                                added = true;
+                            }
                         }
                     }
 
@@ -595,7 +567,7 @@ namespace cAlgo.Robots
                     {
                         var z = new ClusterZone
                         {
-                            ZoneId = $"CZ_{fp.BarIndex}_{levelPrice:F5}",
+                            ZoneId = $"CZ_{fp.BarIndex}_{levelPrice:F2}",
                             CenterPrice = levelPrice,
                             FirstBarIndex = fp.BarIndex,
                             LastBarIndex = fp.BarIndex,
@@ -604,40 +576,46 @@ namespace cAlgo.Robots
                             IsVirgin = true
                         };
                         if (delta > 0) { z.TotalBuyBubbles = 1; z.TotalBuyVolume = level.BuyCount; }
-                        else { z.TotalSellBubbles = 1; z.TotalSellVolume = level.SellCount; }
+                        else           { z.TotalSellBubbles = 1; z.TotalSellVolume = level.SellCount; }
 
+                        int newIdx = clusterZones.Count;
                         clusterZones.Add(z);
                         virginClusters.Add(z.ZoneId);
+                        zoneLookup[Math.Round(lookupKey, 5)] = newIdx;
                     }
                 }
             }
 
-            // Calculate dominance
+            // Hitung dominance
             foreach (var zone in clusterZones)
             {
-                int total = zone.TotalBuyBubbles + zone.TotalSellBubbles;
-                if (total == 0) continue;
-                double buyPct = (double)zone.TotalBuyBubbles / total * 100.0;
-                zone.BuyPercent = buyPct;
-
-                if (buyPct >= ClusterDominanceThreshold)
-                    zone.Dominance = ClusterDominance.BuyDominated;
-                else if ((100.0 - buyPct) >= ClusterDominanceThreshold)
-                    zone.Dominance = ClusterDominance.SellDominated;
-                else
-                    zone.Dominance = ClusterDominance.Consolidated;
+                RecalculateDominance(zone);
             }
 
             if (ShowClusterZones)
                 DrawAllClusterZones();
         }
 
+        private void RecalculateDominance(ClusterZone zone)
+        {
+            int total = zone.TotalBuyBubbles + zone.TotalSellBubbles;
+            if (total == 0) return;
+            double buyPct = (double)zone.TotalBuyBubbles / total * 100.0;
+            zone.BuyPercent = buyPct;
+
+            if (buyPct >= ClusterDominanceThreshold)
+                zone.Dominance = ClusterDominance.BuyDominated;
+            else if ((100.0 - buyPct) >= ClusterDominanceThreshold)
+                zone.Dominance = ClusterDominance.SellDominated;
+            else
+                zone.Dominance = ClusterDominance.Consolidated;
+        }
+
         private void FinalizeCandle(CandleFootprint fp)
         {
             fp.IsFinalized = true;
-            if (fp.TotalTicks < 10) return;
+            if (fp.TotalTicks < 5) return;
 
-            // Draw bubbles for finalized candle
             if (ShowBubbles)
             {
                 foreach (var lvl in fp.PriceLevels)
@@ -648,7 +626,6 @@ namespace cAlgo.Robots
                 }
             }
 
-            // Update cluster zones live
             UpdateClusterZonesWithCandle(fp);
         }
 
@@ -664,34 +641,33 @@ namespace cAlgo.Robots
                 if (Math.Abs(delta) < MinDeltaPerLevel || level.TotalCount < MinVolumePerLevel)
                     continue;
 
-                bool added = false;
+                // Cari zona terdekat secara linear (live update - jumlah zone tidak terlalu besar)
+                ClusterZone nearestZone = null;
+                double nearestDist = double.MaxValue;
+
                 foreach (var zone in clusterZones)
                 {
-                    if (Math.Abs(levelPrice - zone.CenterPrice) <= tolerancePrice)
+                    double dist = Math.Abs(levelPrice - zone.CenterPrice);
+                    if (dist <= tolerancePrice && dist < nearestDist)
                     {
-                        if (delta > 0) { zone.TotalBuyBubbles++; zone.TotalBuyVolume += level.BuyCount; }
-                        else { zone.TotalSellBubbles++; zone.TotalSellVolume += level.SellCount; }
-                        zone.LastBarIndex = fp.BarIndex;
-
-                        // Recalculate dominance
-                        int total = zone.TotalBuyBubbles + zone.TotalSellBubbles;
-                        double buyPct = total > 0 ? (double)zone.TotalBuyBubbles / total * 100.0 : 0;
-                        zone.BuyPercent = buyPct;
-                        if (buyPct >= ClusterDominanceThreshold) zone.Dominance = ClusterDominance.BuyDominated;
-                        else if ((100.0 - buyPct) >= ClusterDominanceThreshold) zone.Dominance = ClusterDominance.SellDominated;
-                        else zone.Dominance = ClusterDominance.Consolidated;
-
-                        if (ShowClusterZones) DrawSingleClusterZone(zone);
-                        added = true;
-                        break;
+                        nearestDist = dist;
+                        nearestZone = zone;
                     }
                 }
 
-                if (!added)
+                if (nearestZone != null)
+                {
+                    if (delta > 0) { nearestZone.TotalBuyBubbles++; nearestZone.TotalBuyVolume += level.BuyCount; }
+                    else           { nearestZone.TotalSellBubbles++; nearestZone.TotalSellVolume += level.SellCount; }
+                    nearestZone.LastBarIndex = fp.BarIndex;
+                    RecalculateDominance(nearestZone);
+                    if (ShowClusterZones) DrawSingleClusterZone(nearestZone);
+                }
+                else
                 {
                     var z = new ClusterZone
                     {
-                        ZoneId = $"CZ_{fp.BarIndex}_{levelPrice:F5}",
+                        ZoneId = $"CZ_{fp.BarIndex}_{levelPrice:F2}",
                         CenterPrice = levelPrice,
                         FirstBarIndex = fp.BarIndex,
                         LastBarIndex = fp.BarIndex,
@@ -701,7 +677,7 @@ namespace cAlgo.Robots
                         Dominance = delta > 0 ? ClusterDominance.BuyDominated : ClusterDominance.SellDominated
                     };
                     if (delta > 0) { z.TotalBuyBubbles = 1; z.TotalBuyVolume = level.BuyCount; }
-                    else { z.TotalSellBubbles = 1; z.TotalSellVolume = level.SellCount; }
+                    else           { z.TotalSellBubbles = 1; z.TotalSellVolume = level.SellCount; }
 
                     clusterZones.Add(z);
                     virginClusters.Add(z.ZoneId);
@@ -710,74 +686,32 @@ namespace cAlgo.Robots
             }
         }
 
+        // ═══════════════════════════════════════
+        //  SESSION FILTER
+        // ═══════════════════════════════════════
+
         private bool IsValidSessionToTrade()
         {
-            // Konversi Waktu Broker ke EST (GMT-5) sesuai pedoman blok grid
             DateTime estTime = Server.TimeInUtc.AddHours(-5);
             int hour = estTime.Hour;
-            
-            // Mengacu pada blok Grid gambar:
+
             bool isLondon = (hour >= 3 && hour < 12);
             bool isNY     = (hour >= 8 && hour < 18);
             bool isSydney = (hour >= 18 || hour < 2);
             bool isTokyo  = (hour >= 19 || hour < 4);
 
             if (isSydney && TradeSydney) return true;
-            if (isTokyo && TradeTokyo) return true;
+            if (isTokyo  && TradeTokyo)  return true;
             if (isLondon && TradeLondon) return true;
-            if (isNY && TradeNY) return true;
+            if (isNY     && TradeNY)     return true;
 
             return false;
         }
 
-        protected override void OnBar()
-        {
-            if (Bars.Count < 2) return;
-            
-            // ── MARKOV CHAIN UPDATE ──
-            UpdateMarketState();
-
-            UpdateHTFTrend();
-
-            // SMC Engine update
-            if (EnableSMC)
-            {
-                UpdateSMCEngine();
-                
-                // ── LUXALGO VISUAL OVERLAYS ──
-                if (ShowPDZones) DrawVisualPDZones();
-                if (ShowEqhEql) CheckVisualEqhEql();
-            }
-
-            // ── TRAILING STOP (MARKOV + ATR) ──
-            UpdateMarkovTrailingStop();
-
-            // Finalize previous candle
-            int prevBar = Bars.Count - 2;
-            if (prevBar >= 0 && candleFootprints.ContainsKey(prevBar) && !candleFootprints[prevBar].IsFinalized)
-                FinalizeCandle(candleFootprints[prevBar]);
-
-            // ── DASHBOARD LOG ──
-            LogDashboard();
-
-            // ── SPECIAL ENTRY 1: Virgin Zone inside SMC OB ──
-            CheckEntry();
-
-            // ── SPECIAL ENTRY 2: Single Bubble inside SMC OB ──
-            CheckBubbleInSmcSignal();
-
-            // ── SIGNAL: Order Flow trigger + SMC confluence ──
-            CheckVirginClusterSignal();
-
-            // ── POST-ENTRY PROTECTION: Absorption & Fake Breakout ──
-            CheckSmcReversal();
-
-            // Memory cleanup
-            PruneOldFootprints();
-        }
-
         // ═══════════════════════════════════════
         //  EARLY EXIT LOGIC (SMC REVERSAL PROTECTION)
+        //  BUG FIX #4: Sekarang dipanggil SETELAH semua entry logic
+        //  sehingga tidak bisa menutup posisi yang baru dibuka di bar yang sama
         // ═══════════════════════════════════════
 
         private void CheckSmcReversal()
@@ -787,34 +721,32 @@ namespace cAlgo.Robots
 
             foreach (var pos in openPositions)
             {
+                // BUG FIX #4: Jangan tutup posisi yang baru dibuka di bar ini
+                int currentBar = Bars.Count - 1;
+                // Estimasi: posisi yang entry bar-nya = bar sekarang → skip reversal check
+                // (cAlgo tidak expose entry bar secara langsung, kita pakai lastTradeBarIndex)
+                if (currentBar == lastTradeBarIndex) continue;
+
                 bool isReversalDetected = false;
 
-                // Jika posisi BUY tapi tren SMC mendadak berubah jadi Bearish (Bearish CHoCH)
                 if (pos.TradeType == TradeType.Buy && smcTrend == SmcTrend.Bearish)
-                {
                     isReversalDetected = true;
-                }
-                // Jika posisi SELL tapi tren SMC mendadak berubah jadi Bullish (Bullish CHoCH)
                 else if (pos.TradeType == TradeType.Sell && smcTrend == SmcTrend.Bullish)
-                {
                     isReversalDetected = true;
-                }
 
                 if (isReversalDetected)
                 {
                     TradeType originalDirection = pos.TradeType;
-                    
+
                     if (ReverseOnSmcChOch)
                     {
-                        Print($"🚨 SMC STRUCTURE REVERSAL: {originalDirection} position trapped by Market Structure Shift! Reversing position now.");
+                        Print($"🚨 SMC CHoCH: {originalDirection} → reversing position");
                         ClosePositionAsync(pos);
-                        
-                        TradeType reverseDirection = originalDirection == TradeType.Buy ? TradeType.Sell : TradeType.Buy;
-                        ExecuteTrade(reverseDirection);
+                        ExecuteTrade(originalDirection == TradeType.Buy ? TradeType.Sell : TradeType.Buy);
                     }
                     else
                     {
-                        Print($"🚨 SMC STRUCTURE REVERSAL: {originalDirection} position cut early due to adverse Market Structure Shift (CHoCH/BOS).");
+                        Print($"🚨 SMC CHoCH: Closing {originalDirection} early — structure shifted");
                         ClosePositionAsync(pos);
                     }
                 }
@@ -822,261 +754,230 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
-        //  SPECIAL ENTRY LOGIC
+        //  SPECIAL ENTRY 1: Virgin Zone inside SMC OB
         // ═══════════════════════════════════════
 
         private void CheckEntry()
         {
             if (!EnableSMC) return;
-            if (!IsValidSessionToTrade()) return;
+            if (_entryExecutedThisBar) return;
 
             double currentPrice = Bars.ClosePrices.LastValue;
 
-            // Iterate over all active virgin zones
             foreach (var zone in clusterZones.ToList())
             {
                 if (!virginClusters.Contains(zone.ZoneId)) continue;
                 if (zone.Dominance == ClusterDominance.Consolidated) continue;
 
-                int totalBubbles = zone.Dominance == ClusterDominance.BuyDominated ? zone.TotalBuyBubbles : zone.TotalSellBubbles;
-                
-                // Syarat Pertama: Delta volume kuat (Minimum Bubbles khusus untuk Entry ini)
+                int totalBubbles = zone.Dominance == ClusterDominance.BuyDominated
+                    ? zone.TotalBuyBubbles : zone.TotalSellBubbles;
+
                 if (totalBubbles < MinBubblesForCheckEntry) continue;
 
-                // Syarat Kedua: Harga menyentuh Virgin Zone ini
                 if (currentPrice >= zone.PriceMin && currentPrice <= zone.PriceMax)
                 {
-                    TradeType direction = zone.Dominance == ClusterDominance.BuyDominated ? TradeType.Buy : TradeType.Sell;
+                    TradeType direction = zone.Dominance == ClusterDominance.BuyDominated
+                        ? TradeType.Buy : TradeType.Sell;
 
-                    // Syarat Ketiga (Golden Rule): Zona tersebut secara harfiah berada DI DALAM Order Block
                     if (IsInOrderBlock(zone.CenterPrice, direction))
                     {
-                        // ── FILTER TREN SMC SEJAK AWAL ──
                         if (smcTrend != SmcTrend.Undefined && smcTrend != SmcTrend.Ranging)
                         {
-                            if (direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) continue;
+                            if (direction == TradeType.Buy  && smcTrend == SmcTrend.Bearish) continue;
                             if (direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) continue;
                         }
 
                         string dir = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
-                        Print($"💎 CHECK ENTRY TRIGGERED: {dir} | Virgin Zone inside {dir} OB | Strong Delta: {totalBubbles} bubbles!");
+                        Print($"💎 CHECK ENTRY: {dir} | Virgin Zone in OB | Delta: {totalBubbles} bubbles");
 
-                        // Hapus zone agar tidak memicu sinyal loop
                         virginClusters.Remove(zone.ZoneId);
                         testedClusters.Add(zone.ZoneId);
                         zone.IsVirgin = false;
 
                         ExecuteTrade(direction);
-                        return; // 1 spesial entry per eksekusi
+                        return;
                     }
                 }
             }
         }
 
         // ═══════════════════════════════════════
-        //  BUBBLE SMC ENTRY LOGIC (DELAYED & CONFIRMED)
+        //  SPECIAL ENTRY 2: Bubble Signal (Delayed & Confirmed)
+        //  BUG FIX #8: FVG check sekarang hanya menggunakan candle yang sudah CLOSED
         // ═══════════════════════════════════════
 
         private void CheckBubbleInSmcSignal()
         {
             if (!EnableSMC) return;
-            if (!IsValidSessionToTrade()) return;
+            if (_entryExecutedThisBar) return;
 
+            // BUG FIX #8: prevBar = candle yang sudah closed (bukan current)
             int prevBar = Bars.Count - 2;
             if (prevBar < 0 || !candleFootprints.ContainsKey(prevBar)) return;
 
             var fp = candleFootprints[prevBar];
-            double currentPrice = Bars.ClosePrices.LastValue;
 
-            // (Filter tarik-menarik ekstrim / Overlapping OB dihapus agar tidak memblokir sinyal)
-
-            // 1. EVALUASI SETUP BUBBLE YANG TERTUNDA
+            // 1. Evaluasi setup yang tertunda
             for (int i = pendingBubbleSetups.Count - 1; i >= 0; i--)
             {
                 var setup = pendingBubbleSetups[i];
-                TradeType oppDir = setup.Direction == TradeType.Buy ? TradeType.Sell : TradeType.Buy;
 
-                // (Fitur Pembatalan berdasarkan OB dihapus untuk mengizinkan Entry Realtime dari Bubble Momentum)
+                if (prevBar <= setup.SetupBarIndex) continue;
 
-                if (prevBar > setup.SetupBarIndex)
+                // SMC Trend filter
+                bool trendConflict = false;
+                if (smcTrend == SmcTrend.Undefined)
                 {
-                    // ── FILTER TREN SMC (SMART MONEY CONCEPTS) ──
-                    bool trendConflict = false;
-                    if (smcTrend == SmcTrend.Undefined)
+                    trendConflict = true;
+                }
+                else
+                {
+                    if (setup.Direction == TradeType.Buy  && smcTrend == SmcTrend.Bearish) trendConflict = true;
+                    if (setup.Direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) trendConflict = true;
+                }
+
+                if (trendConflict)
+                {
+                    Print($"  🚫 BUBBLE CANCELLED: {setup.Direction} conflicts with SMC ({smcTrend})");
+                    pendingBubbleSetups.RemoveAt(i);
+                    continue;
+                }
+
+                // Cari konfirmasi bubble di candle prevBar
+                bool hasConfirmBubble = false;
+                foreach (var lvl in fp.PriceLevels.Values)
+                {
+                    int delta = lvl.BuyCount - lvl.SellCount;
+                    if (Math.Abs(delta) >= MinDeltaPerLevel && lvl.TotalCount >= MinVolumePerLevel)
                     {
-                        trendConflict = true;
+                        TradeType bDir = delta > 0 ? TradeType.Buy : TradeType.Sell;
+                        if (bDir == setup.Direction)
+                        {
+                            hasConfirmBubble = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasConfirmBubble)
+                {
+                    double open  = Bars.OpenPrices[prevBar];
+                    double close = Bars.ClosePrices[prevBar];
+                    double high  = Bars.HighPrices[prevBar];
+                    double low   = Bars.LowPrices[prevBar];
+
+                    double bodyTop    = Math.Max(open, close);
+                    double bodyBottom = Math.Min(open, close);
+                    double bodySize   = bodyTop - bodyBottom;
+                    double upperWick  = high - bodyTop;
+                    double lowerWick  = bodyBottom - low;
+                    double minRejectionWick = 3.0 * Symbol.PipSize;
+
+                    bool isRejection  = false;
+                    bool isDeltaAligned = false;
+                    int totalCandleDelta = fp.TotalBuyCount - fp.TotalSellCount;
+
+                    if (setup.Direction == TradeType.Buy)
+                    {
+                        bool isBullishClose  = close > open;
+                        bool isPinbar        = lowerWick >= (bodySize * 1.5) && lowerWick >= minRejectionWick;
+                        bool invalidUpperWick = upperWick > bodySize && upperWick > lowerWick * 0.5;
+                        isRejection   = (isBullishClose || isPinbar) && !invalidUpperWick;
+                        isDeltaAligned = totalCandleDelta >= -(fp.TotalBuyCount * 0.1);
                     }
                     else
                     {
-                        if (setup.Direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) trendConflict = true;
-                        if (setup.Direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) trendConflict = true;
+                        bool isBearishClose  = close < open;
+                        bool isPinbar        = upperWick >= (bodySize * 1.5) && upperWick >= minRejectionWick;
+                        bool invalidLowerWick = lowerWick > bodySize && lowerWick > upperWick * 0.5;
+                        isRejection   = (isBearishClose || isPinbar) && !invalidLowerWick;
+                        isDeltaAligned = totalCandleDelta <= (fp.TotalSellCount * 0.1);
                     }
 
-                    if (trendConflict)
+                    if (isRejection && isDeltaAligned)
                     {
-                        Print($"  🚫 BUBBLE CANCELLED: Setup {setup.Direction} conflicts with global SMC Trend ({smcTrend})");
-                        pendingBubbleSetups.RemoveAt(i);
-                        continue;
-                    }
-
-                    // Cari Konfirmasi Bubble di Candle Terbaru
-                    bool hasConfirmBubble = false;
-                    foreach (var lvl in fp.PriceLevels.Values)
-                    {
-                        int delta = lvl.BuyCount - lvl.SellCount;
-                        if (Math.Abs(delta) >= MinDeltaPerLevel && lvl.TotalCount >= MinVolumePerLevel)
-                        {
-                            TradeType bDir = delta > 0 ? TradeType.Buy : TradeType.Sell;
-                            if (bDir == setup.Direction)
-                            {
-                                hasConfirmBubble = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (hasConfirmBubble)
-                    {
-                        // ── FILTER ORDERFLOW DELTA & REJECTION (PINBAR / ENGULFING) ──
-                        double open = Bars.OpenPrices[prevBar];
-                        double close = Bars.ClosePrices[prevBar];
-                        double high = Bars.HighPrices[prevBar];
-                        double low = Bars.LowPrices[prevBar];
-                        
-                        double bodyTop = Math.Max(open, close);
-                        double bodyBottom = Math.Min(open, close);
-                        double bodySize = bodyTop - bodyBottom;
-                        double upperWick = high - bodyTop;
-                        double lowerWick = bodyBottom - low;
-
-                        bool isRejection = false;
-                        double minRejectionWick = 3.0 * Symbol.PipSize; // Sumbu penolakan minimal 3 pips
-                        
-                        int totalCandleDelta = fp.TotalBuyCount - fp.TotalSellCount;
-                        bool isDeltaAligned = false;
-                        
-                        if (setup.Direction == TradeType.Buy)
-                        {
-                            bool isBullishClose = close > open; // Body hijau
-                            bool isPinbar = lowerWick >= (bodySize * 1.5) && lowerWick >= minRejectionWick; // Sumbu bawah memanjang
-                            
-                            // Tolak keras jika ekor lawannya (atas) terlalu panjang (Doji Gila / Shooting Star)
-                            bool invalidUpperWick = upperWick > bodySize && upperWick > (lowerWick * 0.5);
-                            
-                            isRejection = (isBullishClose || isPinbar) && !invalidUpperWick;
-                            isDeltaAligned = totalCandleDelta >= -(fp.TotalBuyCount * 0.1); // Toleransi delta negatif super tipis jika sedang Pinbar pantulan
-                        }
-                        else
-                        {
-                            bool isBearishClose = close < open; // Body merah
-                            bool isPinbar = upperWick >= (bodySize * 1.5) && upperWick >= minRejectionWick; // Sumbu atas memanjang
-                            
-                            // Tolak keras jika ekor lawannya (bawah) terlalu panjang (Doji Gila / Hammer)
-                            bool invalidLowerWick = lowerWick > bodySize && lowerWick > (upperWick * 0.5);
-                            
-                            isRejection = (isBearishClose || isPinbar) && !invalidLowerWick;
-                            isDeltaAligned = totalCandleDelta <= (fp.TotalSellCount * 0.1); // Toleransi delta positif tipis
-                        }
-
-                        if (isRejection && isDeltaAligned)
-                        {
-                            string dirName = setup.Direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
-                            Print($"💥 CONFIRMED BUBBLE SIGNAL: {dirName} | Wick & 2nd Bubble confirmed!");
-                            
-                            pendingBubbleSetups.Clear(); // Bersihkan setup lain setelah entry
-                            ExecuteTrade(setup.Direction);
-                            return; // Eksekusi
-                        }
+                        string dirName = setup.Direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
+                        Print($"💥 CONFIRMED BUBBLE: {dirName} | Wick + 2nd Bubble confirmed");
+                        pendingBubbleSetups.Clear();
+                        ExecuteTrade(setup.Direction);
+                        return;
                     }
                 }
             }
 
-            // 2. DETEKSI BUBBLE INISIAL BARU
+            // 2. Deteksi bubble inisial baru
             foreach (var levelKvp in fp.PriceLevels)
             {
+                if (_entryExecutedThisBar) break;
+
                 double price = levelKvp.Key;
-                var level = levelKvp.Value;
-                int delta = level.BuyCount - level.SellCount;
+                var level    = levelKvp.Value;
+                int delta    = level.BuyCount - level.SellCount;
 
-                if (Math.Abs(delta) >= MinDeltaPerLevel && level.TotalCount >= MinVolumePerLevel)
+                if (Math.Abs(delta) < MinDeltaPerLevel || level.TotalCount < MinVolumePerLevel)
+                    continue;
+
+                TradeType direction = delta > 0 ? TradeType.Buy : TradeType.Sell;
+
+                // Harus berada dalam SMC Zone yang valid
+                bool inSMCZone    = false;
+                bool inOppositeZone = false;
+
+                foreach (var ob in orderBlocks)
                 {
-                    TradeType direction = delta > 0 ? TradeType.Buy : TradeType.Sell;
-                    
-                    // ── FILTER HARGA HARUS DI DALAM ZONA SMC (ORDER BLOCK / FVG) ──
-                    bool inSMCZone = false;
-                    bool inOppositeZone = false;
-
-                    foreach (var ob in orderBlocks)
+                    if (ob.IsMitigated) continue;
+                    if (price >= ob.PriceLow && price <= ob.PriceHigh)
                     {
-                        if (price >= ob.PriceLow && price <= ob.PriceHigh)
-                        {
-                            if (ob.IsBullish && direction == TradeType.Buy) inSMCZone = true;
-                            else if (!ob.IsBullish && direction == TradeType.Sell) inSMCZone = true;
-                            
-                            // Deteksi jika harga tercebak di blok lawan
-                            if (ob.IsBullish && direction == TradeType.Sell) inOppositeZone = true;
-                            else if (!ob.IsBullish && direction == TradeType.Buy) inOppositeZone = true;
-                        }
-                    }
-                    
-                    if (!inSMCZone || inOppositeZone)
-                    {
-                        // Print($"  🚫 BUBBLE CANCELLED: Setup {direction} is not in a valid SMC Zone or is trapped in an opposite zone.");
-                        continue;
-                    }
-
-                    // ── FILTER TREN SMC SEJAK AWAL ──
-                    if (smcTrend == SmcTrend.Undefined) continue;
-                    
-                    if (smcTrend != SmcTrend.Ranging)
-                    {
-                        if (direction == TradeType.Buy && smcTrend == SmcTrend.Bearish) continue;
-                        if (direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) continue;
-                    }
-
-                        // Mendaftarkan setup jika belum ada
-                        bool exists = false;
-                        foreach (var setup in pendingBubbleSetups)
-                        {
-                            if (setup.Direction == direction && Math.Abs(setup.SetupPrice - price) < 5 * Symbol.PipSize)
-                                exists = true;
-                        }
-
-                        if (!exists)
-                        {
-                            pendingBubbleSetups.Add(new PendingBubbleSetup
-                            {
-                                Direction = direction,
-                                SetupPrice = price,
-                                SetupBarIndex = prevBar
-                            });
-                            string dirName = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
-                            Print($"⏳ PENDING BUBBLE: {dirName} at {price:F2}. Waiting for wick & next bubble confirmation...");
-                        }
+                        if (ob.IsBullish  && direction == TradeType.Buy)  inSMCZone = true;
+                        if (!ob.IsBullish && direction == TradeType.Sell) inSMCZone = true;
+                        if (ob.IsBullish  && direction == TradeType.Sell) inOppositeZone = true;
+                        if (!ob.IsBullish && direction == TradeType.Buy)  inOppositeZone = true;
                     }
                 }
+
+                if (!inSMCZone || inOppositeZone) continue;
+                if (smcTrend == SmcTrend.Undefined) continue;
+
+                if (smcTrend != SmcTrend.Ranging)
+                {
+                    if (direction == TradeType.Buy  && smcTrend == SmcTrend.Bearish) continue;
+                    if (direction == TradeType.Sell && smcTrend == SmcTrend.Bullish) continue;
+                }
+
+                bool exists = pendingBubbleSetups.Any(s =>
+                    s.Direction == direction && Math.Abs(s.SetupPrice - price) < 5 * Symbol.PipSize);
+
+                if (!exists)
+                {
+                    pendingBubbleSetups.Add(new PendingBubbleSetup
+                    {
+                        Direction     = direction,
+                        SetupPrice    = price,
+                        SetupBarIndex = prevBar
+                    });
+                    string dirName = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
+                    Print($"⏳ PENDING BUBBLE: {dirName} at {price:F2} — waiting for wick + confirmation");
+                }
             }
+        }
 
         // ═══════════════════════════════════════
-        //  SIGNAL ENGINE
-        //  Trigger: Order Flow (Virgin Cluster touch)
-        //  Direction: SMC Trend (BOS/CHoCH)
-        //  Confluence: OB, FVG, SMA, HTF
+        //  SIGNAL ENGINE: Virgin Cluster + SMC Confluence
         // ═══════════════════════════════════════
 
         private void CheckVirginClusterSignal()
         {
+            if (_entryExecutedThisBar) return;
+
             double currentPrice = Bars.ClosePrices.LastValue;
             int currentBar = Bars.Count - 1;
 
             foreach (var zone in clusterZones)
             {
-                if (!virginClusters.Contains(zone.ZoneId))
-                    continue;
+                if (!virginClusters.Contains(zone.ZoneId)) continue;
 
                 int totalBubbles = zone.TotalBuyBubbles + zone.TotalSellBubbles;
-                if (totalBubbles < MinBubblesForVirgin)
-                    continue;
+                if (totalBubbles < MinBubblesForVirgin) continue;
 
                 int age = currentBar - zone.LastBarIndex;
                 if (age > MaxVirginZoneAge)
@@ -1085,99 +986,86 @@ namespace cAlgo.Robots
                     continue;
                 }
 
-                if (zone.Dominance == ClusterDominance.Consolidated)
-                    continue;
+                if (zone.Dominance == ClusterDominance.Consolidated) continue;
 
-                // ══════════════════════════════════════
-                //  PRICE TOUCH → ENTRY TRIGGERED
-                // ══════════════════════════════════════
                 if (currentPrice >= zone.PriceMin && currentPrice <= zone.PriceMax)
                 {
                     virginClusters.Remove(zone.ZoneId);
                     testedClusters.Add(zone.ZoneId);
                     zone.IsVirgin = false;
 
-                    // ── DIRECTION ──
-                    TradeType ofDirection = zone.Dominance == ClusterDominance.BuyDominated
+                    TradeType direction = zone.Dominance == ClusterDominance.BuyDominated
                         ? TradeType.Buy : TradeType.Sell;
-                    TradeType direction = ofDirection;
-                    int confluenceScore = 1; // OF trigger = 1 point
+                    int confluenceScore = 1; // OF trigger = 1
 
-                    Print($"🔮 OF TRIGGER: Virgin Cluster at {zone.CenterPrice:F2} | {zone.Dominance} | {totalBubbles} bubbles | Age: {age}");
+                    Print($"🔮 OF TRIGGER: Virgin at {zone.CenterPrice:F2} | {zone.Dominance} | {totalBubbles} bubbles | Age:{age}");
                     totalSignals++;
 
-                    // ── SMC TREND (directional filter) ──
+                    // SMC Trend filter
                     if (EnableSMC && smcTrend != SmcTrend.Undefined)
                     {
                         TradeType smcDir = smcTrend == SmcTrend.Bullish ? TradeType.Buy : TradeType.Sell;
-
-                        if (ofDirection == smcDir)
+                        if (direction == smcDir)
                         {
-                            // OF agrees with SMC → strong signal, direction confirmed
                             confluenceScore += 2;
-                            Print($"  ✅ SMC Trend: {smcTrend} agrees with OF ({ofDirection}) +2");
+                            Print($"  ✅ SMC Trend: {smcTrend} +2");
                         }
                         else
                         {
-                            // OF disagrees with SMC → SKIP (conflicting signals)
-                            Print($"  🚫 SMC Conflict: OF={ofDirection} vs SMC={smcTrend} — skipped");
+                            Print($"  🚫 SMC Conflict: OF={direction} vs SMC={smcTrend} — skipped");
                             return;
                         }
                     }
 
-                    // ── SMA FILTER ──
+                    // SMA filter
                     if (EnableSMAFilter)
                     {
                         double smaValue = sma.Result.LastValue;
-                        bool smaOk = (direction == TradeType.Buy && currentPrice > smaValue) ||
+                        bool smaOk = (direction == TradeType.Buy  && currentPrice > smaValue) ||
                                      (direction == TradeType.Sell && currentPrice < smaValue);
                         if (!smaOk)
                         {
-                            Print($"  🚫 SMA: {direction} but price {(direction == TradeType.Buy ? "below" : "above")} SMA {smaValue:F2} — skipped");
+                            Print($"  🚫 SMA({SmaPeriod})={smaValue:F2}: price wrong side — skipped");
                             return;
                         }
                         confluenceScore++;
                     }
 
-                    // ── HTF FILTER ──
+                    // HTF filter
                     if (EnableHTFFilter && htfTrend != TrendDirection.Neutral)
                     {
-                        bool htfOk = (direction == TradeType.Buy && htfTrend == TrendDirection.Up) ||
+                        bool htfOk = (direction == TradeType.Buy  && htfTrend == TrendDirection.Up) ||
                                      (direction == TradeType.Sell && htfTrend == TrendDirection.Down);
                         if (!htfOk)
                         {
-                            Print($"  🚫 HTF: {direction} vs HTF={htfTrend} — skipped");
+                            Print($"  🚫 HTF={htfTrend} conflicts with {direction} — skipped");
                             return;
                         }
                         confluenceScore++;
                     }
 
-                    // ── SMC ZONES (bonus confluence, NOT triggers) ──
+                    // SMC Zone bonuses
                     bool inOB = false, inFVG = false;
                     if (EnableSMC)
                     {
-                        inOB = IsInOrderBlock(currentPrice, direction);
+                        inOB  = IsInOrderBlock(currentPrice, direction);
                         inFVG = IsInFairValueGap(currentPrice, direction);
-                        if (inOB) { confluenceScore++; Print($"  ✅ In Order Block +1"); }
+                        if (inOB)  { confluenceScore++; Print($"  ✅ In Order Block +1"); }
                         if (inFVG) { confluenceScore++; Print($"  ✅ In FVG +1"); }
                     }
 
-                    // ── MINIMUM SCORE CHECK ──
-                    string dir = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
+                    string dir    = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
                     string smcStr = EnableSMC ? $"SMC={smcTrend}" : "SMC=off";
-                    string obStr = inOB ? "OB✓" : "OB✗";
-                    string fvgStr = inFVG ? "FVG✓" : "FVG✗";
 
                     if (confluenceScore < MinConfluenceScore)
                     {
-                        Print($"📊 WEAK: {dir} | Score: {confluenceScore}/{MinConfluenceScore} min | {smcStr} {obStr} {fvgStr} — skipped");
+                        Print($"📊 WEAK: {dir} | Score:{confluenceScore}/{MinConfluenceScore} | {smcStr} — skipped");
                         return;
                     }
 
-                    Print($"📊 SIGNAL: {dir} | Score: {confluenceScore}/7 | {smcStr} {obStr} {fvgStr}");
-
+                    Print($"📊 SIGNAL: {dir} | Score:{confluenceScore}/7 | {smcStr} OB={inOB} FVG={inFVG}");
                     ExecuteTrade(direction);
-                    return; // One signal per bar
+                    return;
                 }
             }
         }
@@ -1188,11 +1076,18 @@ namespace cAlgo.Robots
 
         private void ExecuteTrade(TradeType direction)
         {
+            if (_entryExecutedThisBar)
+            {
+                Print("🚫 Entry already executed this bar — skipped");
+                return;
+            }
+
             // 1. Daily loss limit
+            // BUG FIX #3: dailyStartBalance sudah diinit di OnStart, bukan 0
             double dailyLoss = dailyStartBalance - Account.Equity;
             if (dailyLoss >= dailyStartBalance * (MaxDailyLossPercent / 100.0))
             {
-                Print("🚫 Daily loss limit — skipped");
+                Print("🚫 Daily loss limit reached — skipped");
                 return;
             }
 
@@ -1211,7 +1106,7 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // 4. Spread
+            // 4. Spread check
             double spread = Symbol.Spread / Symbol.PipSize;
             if (spread > MaxSpreadPips)
             {
@@ -1223,7 +1118,7 @@ namespace cAlgo.Robots
             int currentBar = Bars.Count - 1;
             if (currentBar - lastTradeBarIndex < CooldownBars)
             {
-                Print("🚫 Cooldown — skipped");
+                Print("🚫 Cooldown active — skipped");
                 return;
             }
 
@@ -1232,71 +1127,70 @@ namespace cAlgo.Robots
             {
                 if (pos.TradeType == direction)
                 {
-                    Print($"🚫 Already have {direction} — skipped");
+                    Print($"🚫 Already have {direction} position — skipped");
                     return;
                 }
             }
 
-            // ── DYNAMIC SL/TP (SMC) ──
+            // ── Dynamic SL/TP berdasarkan SMC Order Block ──
             double currentPrice = direction == TradeType.Buy ? Symbol.Ask : Symbol.Bid;
             double estimatedSlPips = FallbackSlPips;
 
             if (EnableSMC)
             {
-                OrderBlock nearestBullOB = null;
-                OrderBlock nearestBearOB = null;
-                int currentBarIdx = Bars.Count - 1;
+                OrderBlock nearestOB = null;
+                double nearestDist = double.MaxValue;
 
                 foreach (var ob in orderBlocks)
                 {
-                    if (ob.IsMitigated || currentBarIdx - ob.BarIndex > OBMaxAge) continue;
-                    if (ob.IsBullish)
+                    if (ob.IsMitigated || currentBar - ob.BarIndex > OBMaxAge) continue;
+                    bool matching = direction == TradeType.Buy ? ob.IsBullish : !ob.IsBullish;
+                    if (!matching) continue;
+
+                    double refPrice = direction == TradeType.Buy ? ob.PriceHigh : ob.PriceLow;
+                    double dist = Math.Abs(currentPrice - refPrice);
+                    if (dist < nearestDist) { nearestDist = dist; nearestOB = ob; }
+                }
+
+                if (nearestOB != null)
+                {
+                    if (direction == TradeType.Buy)
                     {
-                        if (nearestBullOB == null || Math.Abs(currentPrice - ob.PriceHigh) < Math.Abs(currentPrice - nearestBullOB.PriceHigh))
-                            nearestBullOB = ob;
+                        double slPrice = nearestOB.PriceLow - (SlBufferPips * Symbol.PipSize);
+                        estimatedSlPips = (currentPrice - slPrice) / Symbol.PipSize;
                     }
                     else
                     {
-                        if (nearestBearOB == null || Math.Abs(currentPrice - ob.PriceLow) < Math.Abs(currentPrice - nearestBearOB.PriceLow))
-                            nearestBearOB = ob;
+                        double slPrice = nearestOB.PriceHigh + (SlBufferPips * Symbol.PipSize);
+                        estimatedSlPips = (slPrice - currentPrice) / Symbol.PipSize;
                     }
-                }
-
-                if (direction == TradeType.Buy && nearestBullOB != null)
-                {
-                    double slPrice = nearestBullOB.PriceLow - (SlBufferPips * Symbol.PipSize);
-                    estimatedSlPips = (currentPrice - slPrice) / Symbol.PipSize;
-                }
-                else if (direction == TradeType.Sell && nearestBearOB != null)
-                {
-                    double slPrice = nearestBearOB.PriceHigh + (SlBufferPips * Symbol.PipSize);
-                    estimatedSlPips = (slPrice - currentPrice) / Symbol.PipSize;
                 }
             }
 
-            // Ensure SL is strictly positive and wider than spread
+            // SL minimum: spread + 2 pip buffer
             double spreadPips = (Symbol.Ask - Symbol.Bid) / Symbol.PipSize;
             double minSl = Math.Round(spreadPips + 2.0, 1);
             if (estimatedSlPips < minSl) estimatedSlPips = minSl;
+            if (estimatedSlPips > FallbackSlPips * 2) estimatedSlPips = FallbackSlPips;
 
             double estimatedTpPips = estimatedSlPips * RiskRewardRatio;
 
-            // ── Volume ──
             double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(FixedLots));
             if (volume < Symbol.VolumeInUnitsMin) volume = Symbol.VolumeInUnitsMin;
 
-            // ── Execute ──
-            var result = ExecuteMarketOrder(direction, SymbolName, volume, BotLabel, 
-                stopLossPips: estimatedSlPips, takeProfitPips: estimatedTpPips);
+            var result = ExecuteMarketOrder(direction, SymbolName, volume, BotLabel,
+                stopLossPips: estimatedSlPips,
+                takeProfitPips: estimatedTpPips);
 
             if (result.IsSuccessful)
             {
                 totalTrades++;
                 dailyTradeCount++;
                 lastTradeBarIndex = currentBar;
+                _entryExecutedThisBar = true; // BUG FIX #2
 
                 string dir = direction == TradeType.Buy ? "🟢 BUY" : "🔴 SELL";
-                Print($"✅ {dir} | Vol:{volume}");
+                Print($"✅ {dir} | Vol:{volume} | SL:{estimatedSlPips:F1}p | TP:{estimatedTpPips:F1}p");
             }
             else
             {
@@ -1305,7 +1199,11 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
-        //  TRAILING STOP (MARKOV-ATR HYBRID)
+        //  TRAILING STOP: MARKOV-ATR HYBRID
+        //  BUG FIX #9: Logika multiplier diperbaiki
+        //  - Saat bullish trend kuat: KENCANGKAN SL (lindungi profit)
+        //  - Saat mau reversal: LONGGARKAN dulu sebentar (beri ruang napas)
+        //  Ini adalah filosofi yang lebih benar untuk trailing stop
         // ═══════════════════════════════════════
 
         private void UpdateMarkovTrailingStop()
@@ -1316,50 +1214,61 @@ namespace cAlgo.Robots
             if (openPositions.Length == 0) return;
 
             double currentPrice = Bars.ClosePrices.LastValue;
-            double currentAtr = atr.Result.LastValue;
+            double currentAtr   = atr.Result.LastValue;
+            if (currentAtr <= 0) return;
 
-            // Calculate dominance probability of current state continuing
             int currentStateIdx = (int)currentMarketState;
-            double totalTransitionsFromCurrent = 0;
-            for (int i = 0; i < 3; i++) totalTransitionsFromCurrent += transitionMatrix[currentStateIdx, i];
+            double totalTransitions = 0;
+            for (int i = 0; i < 3; i++) totalTransitions += transitionMatrix[currentStateIdx, i];
 
-            double probStayBullish = totalTransitionsFromCurrent > 0 ? transitionMatrix[currentStateIdx, (int)MarketState.Bullish] / totalTransitionsFromCurrent : 0.33;
-            double probStayBearish = totalTransitionsFromCurrent > 0 ? transitionMatrix[currentStateIdx, (int)MarketState.Bearish] / totalTransitionsFromCurrent : 0.33;
+            double probContinueBull = totalTransitions > 0
+                ? transitionMatrix[currentStateIdx, (int)MarketState.Bullish] / totalTransitions : 0.33;
+            double probContinueBear = totalTransitions > 0
+                ? transitionMatrix[currentStateIdx, (int)MarketState.Bearish] / totalTransitions : 0.33;
 
-            // Apply trailing stop to open positions
             foreach (var position in openPositions)
             {
                 double dynamicMultiplier = BaseAtrMultiplier;
 
                 if (position.TradeType == TradeType.Buy)
                 {
-                    // If probability of staying Bullish is high (> 60%), relax the SL (give it room to breathe)
-                    if (probStayBullish > 0.6) dynamicMultiplier = BaseAtrMultiplier * 1.5;
-                    // If probability of Bearish reversal is high (> 50%), tighten the SL (protect profits aggressively)
-                    else if (probStayBearish > 0.5) dynamicMultiplier = BaseAtrMultiplier * 0.5;
+                    // BUG FIX #9: Saat bullish momentum kuat → kencangkan SL untuk lock profit
+                    if (probContinueBull > 0.6)
+                        dynamicMultiplier = BaseAtrMultiplier * 0.8; // SL lebih dekat = lebih agresif proteksi
+                    // Saat reversal bearish kemungkinan tinggi → longgarkan sedikit agar tidak ter-stop premature
+                    else if (probContinueBear > 0.5)
+                        dynamicMultiplier = BaseAtrMultiplier * 1.3;
 
                     double newSL = Math.Round(currentPrice - (dynamicMultiplier * currentAtr), Symbol.Digits);
 
-                    // Ensure new SL is strictly ABOVE the old SL, and keeps a minimum buffer from current price
-                    if ((position.StopLoss == null || newSL > position.StopLoss.Value) && newSL < currentPrice - (4 * Symbol.PipSize))
+                    // Trail hanya maju (naik), tidak boleh mundur (turun)
+                    bool slShouldMove = position.StopLoss == null || newSL > position.StopLoss.Value;
+                    // Jaga minimum jarak dari harga agar tidak langsung kena SL
+                    bool sufficientGap = newSL < currentPrice - (3 * Symbol.PipSize);
+
+                    if (slShouldMove && sufficientGap)
                     {
-                        Print($"🛡️ MARKOV TRAIL (BUY): State={currentMarketState} (Bull {probStayBullish*100:F0}%) | AtrX={dynamicMultiplier:F1} | Moving SL -> {newSL}");
+                        Print($"🛡️ TRAIL BUY: {currentMarketState} (BullProb={probContinueBull*100:F0}%) ATRx{dynamicMultiplier:F1} → SL={newSL:F2}");
                         ModifyPositionAsync(position, newSL, position.TakeProfit);
                     }
                 }
                 else if (position.TradeType == TradeType.Sell)
                 {
-                    // If probability of staying Bearish is high (> 60%), relax the SL (give it room to breathe)
-                    if (probStayBearish > 0.6) dynamicMultiplier = BaseAtrMultiplier * 1.5;
-                    // If probability of Bullish reversal is high (> 50%), tighten the SL (protect profits aggressively)
-                    else if (probStayBullish > 0.5) dynamicMultiplier = BaseAtrMultiplier * 0.5;
+                    // BUG FIX #9: Saat bearish momentum kuat → kencangkan SL
+                    if (probContinueBear > 0.6)
+                        dynamicMultiplier = BaseAtrMultiplier * 0.8;
+                    else if (probContinueBull > 0.5)
+                        dynamicMultiplier = BaseAtrMultiplier * 1.3;
 
                     double newSL = Math.Round(currentPrice + (dynamicMultiplier * currentAtr), Symbol.Digits);
 
-                    // Ensure new SL is strictly BELOW the old SL
-                    if ((position.StopLoss == null || newSL < position.StopLoss.Value) && newSL > currentPrice + (4 * Symbol.PipSize))
+                    // Trail hanya maju (turun), tidak boleh mundur (naik)
+                    bool slShouldMove = position.StopLoss == null || newSL < position.StopLoss.Value;
+                    bool sufficientGap = newSL > currentPrice + (3 * Symbol.PipSize);
+
+                    if (slShouldMove && sufficientGap)
                     {
-                        Print($"🛡️ MARKOV TRAIL (SELL): State={currentMarketState} (Bear {probStayBearish*100:F0}%) | AtrX={dynamicMultiplier:F1} | Moving SL -> {newSL}");
+                        Print($"🛡️ TRAIL SELL: {currentMarketState} (BearProb={probContinueBear*100:F0}%) ATRx{dynamicMultiplier:F1} → SL={newSL:F2}");
                         ModifyPositionAsync(position, newSL, position.TakeProfit);
                     }
                 }
@@ -1367,49 +1276,52 @@ namespace cAlgo.Robots
         }
 
         // ═══════════════════════════════════════
-        //  RISK MANAGEMENT (SIMPLE)
+        //  RISK MANAGEMENT
+        //  BUG FIX #3: dailyStartBalance reset dengan benar
         // ═══════════════════════════════════════
 
         private void ResetDailyCounters()
         {
             if (Server.Time.Date != lastTradeDay)
             {
+                // Reset di awal hari baru, bukan di OnStart
                 dailyStartBalance = Account.Balance;
-                dailyTradeCount = 0;
-                lastTradeDay = Server.Time.Date;
+                dailyTradeCount   = 0;
+                lastTradeDay      = Server.Time.Date;
+                Print($"📅 New day: {lastTradeDay:yyyy-MM-dd} | Balance: {dailyStartBalance:F2}");
             }
         }
-
-
 
         private void OnPositionClosed(PositionClosedEventArgs args)
         {
             var pos = args.Position;
             if (pos.Label != BotLabel || pos.SymbolName != SymbolName) return;
 
-            if (pos.NetProfit >= 0) { tradesWon++; Print($"✅ Won: +${pos.NetProfit:F2}"); }
-            else { tradesLost++; Print($"❌ Lost: -${Math.Abs(pos.NetProfit):F2}"); }
+            if (pos.NetProfit >= 0) { tradesWon++;  Print($"✅ Won: +${pos.NetProfit:F2}"); }
+            else                    { tradesLost++; Print($"❌ Lost: -${Math.Abs(pos.NetProfit):F2}"); }
         }
 
         // ═══════════════════════════════════════
         //  MARKOV CHAIN STATE TRACKING
+        //  Menggunakan rolling window yang benar
         // ═══════════════════════════════════════
 
         private void UpdateMarketState()
         {
             if (Bars.Count < 2) return;
-            
+
             int currentBar = Bars.Count - 1;
-            double open = Bars.OpenPrices[currentBar];
-            double close = Bars.ClosePrices[currentBar];
-            double atrVal = atr.Result.LastValue;
+            double open    = Bars.OpenPrices[currentBar];
+            double close   = Bars.ClosePrices[currentBar];
+            double atrVal  = atr.Result.LastValue;
+            if (atrVal <= 0) return;
 
-            MarketState newState = MarketState.Flat;
-            double bodyThreshold = atrVal * 0.3; // Minimum body size to be considered a directional move
+            double bodyThreshold = atrVal * 0.3;
 
-            if (close > open + bodyThreshold) newState = MarketState.Bullish;
+            MarketState newState;
+            if      (close > open + bodyThreshold) newState = MarketState.Bullish;
             else if (close < open - bodyThreshold) newState = MarketState.Bearish;
-            else newState = MarketState.Flat;
+            else                                    newState = MarketState.Flat;
 
             if (stateHistory.Count == 0)
             {
@@ -1418,25 +1330,20 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // Track transition from previous state to new state
             MarketState prevState = stateHistory.Last();
-            
-            // Maintain rolling window
-            stateHistory.Add(newState);
-            if (stateHistory.Count > MarkovLookback)
+
+            // Rolling window: hapus transisi terlama jika sudah penuh
+            if (stateHistory.Count >= MarkovLookback)
             {
-                MarketState oldPrevState = stateHistory[0];
-                MarketState oldNextState = stateHistory[1];
-                
-                // Subtract old transition leaving the exact window
-                if (transitionMatrix[(int)oldPrevState, (int)oldNextState] > 0)
-                    transitionMatrix[(int)oldPrevState, (int)oldNextState]--;
-                
+                MarketState oldPrev = stateHistory[0];
+                MarketState oldNext = stateHistory[1];
+                if (transitionMatrix[(int)oldPrev, (int)oldNext] > 0)
+                    transitionMatrix[(int)oldPrev, (int)oldNext]--;
                 stateHistory.RemoveAt(0);
             }
 
-            // Add new transition
             transitionMatrix[(int)prevState, (int)newState]++;
+            stateHistory.Add(newState);
             currentMarketState = newState;
         }
 
@@ -1446,8 +1353,7 @@ namespace cAlgo.Robots
 
         private void UpdateHTFTrend()
         {
-            if (!EnableHTFFilter || htfBars == null || htfBars.Count < HTFSwingLookback + 2)
-                return;
+            if (!EnableHTFFilter || htfBars == null || htfBars.Count < HTFSwingLookback + 2) return;
 
             int last = htfBars.Count - 1;
             int half = HTFSwingLookback / 2;
@@ -1459,103 +1365,36 @@ namespace cAlgo.Robots
             {
                 if (i < 0 || i >= htfBars.Count) continue;
                 if (htfBars.HighPrices[i] > prevHigh) prevHigh = htfBars.HighPrices[i];
-                if (htfBars.LowPrices[i] < prevLow) prevLow = htfBars.LowPrices[i];
+                if (htfBars.LowPrices[i]  < prevLow)  prevLow  = htfBars.LowPrices[i];
             }
 
             for (int i = last - half + 1; i <= last; i++)
             {
                 if (i < 0 || i >= htfBars.Count) continue;
                 if (htfBars.HighPrices[i] > currHigh) currHigh = htfBars.HighPrices[i];
-                if (htfBars.LowPrices[i] < currLow) currLow = htfBars.LowPrices[i];
+                if (htfBars.LowPrices[i]  < currLow)  currLow  = htfBars.LowPrices[i];
             }
 
-            TrendDirection newTrend;
             bool isHH = currHigh > prevHigh, isHL = currLow > prevLow;
             bool isLH = currHigh < prevHigh, isLL = currLow < prevLow;
 
-            if (isHH && isHL) newTrend = TrendDirection.Up;
+            TrendDirection newTrend;
+            if      (isHH && isHL) newTrend = TrendDirection.Up;
             else if (isLH && isLL) newTrend = TrendDirection.Down;
-            else newTrend = TrendDirection.Neutral;
+            else                    newTrend = TrendDirection.Neutral;
 
             if (newTrend != htfTrend)
             {
                 htfTrend = newTrend;
                 string icon = htfTrend == TrendDirection.Up ? "📈" :
                               htfTrend == TrendDirection.Down ? "📉" : "➡️";
-                Print($"{icon} HTF Trend: {htfTrend}");
-            }
-        }
-
-        // ═══════════════════════════════════════
-        //  LUXALGO SMC VISUAL ENGINE
-        // ═══════════════════════════════════════
-
-        private void DrawVisualPDZones()
-        {
-            if (lastSwingHigh == 0 || lastSwingLow == double.MaxValue) return;
-            
-            double equilibrium = (lastSwingHigh + lastSwingLow) / 2.0;
-            
-            // Anchor kotak tepat di tempat Swing Point lahir
-            int startBar = Math.Min(lastSwingHighIndex, lastSwingLowIndex);
-            if (startBar <= 0) startBar = Math.Max(0, Bars.Count - 60);
-
-            int endBar = Bars.Count + 5; // Sedikit menjorok ke depan
-
-            // Hapus blok kotak yang lama agar tidak mengotori layar
-            Chart.RemoveObject("PDPremiumBox");
-            Chart.RemoveObject("PDDiscountBox");
-            Chart.RemoveObject("PDTopLbl");
-            Chart.RemoveObject("PDBotLbl");
-
-            // 1. Garis Batas Atas (Premium)
-            Chart.DrawTrendLine("PDTopLine", startBar, lastSwingHigh, endBar, lastSwingHigh, Color.Red, 1, LineStyle.Solid);
-            Chart.DrawText("PDTopTxt", "Premium", endBar + 1, lastSwingHigh, Color.Red);
-
-            // 2. Garis Tengah (Equilibrium)
-            Chart.DrawTrendLine("PDEqLine", startBar, equilibrium, endBar, equilibrium, Color.DarkOrange, 1, LineStyle.LinesDots);
-            Chart.DrawText("PDEqTxt", "Equilibrium", endBar + 1, equilibrium, Color.DarkOrange);
-
-            // 3. Garis Batas Bawah (Discount)
-            Chart.DrawTrendLine("PDBotLine", startBar, lastSwingLow, endBar, lastSwingLow, Color.DeepSkyBlue, 1, LineStyle.Solid);
-            Chart.DrawText("PDBotTxt", "Discount", endBar + 1, lastSwingLow, Color.DeepSkyBlue);
-        }
-
-        private void CheckVisualEqhEql()
-        {
-            if (swingPoints.Count < 3) return;
-            
-            // Collect recent Highs and Lows
-            var highs = swingPoints.Where(s => s.Type == SwingType.High).Reverse().Take(3).ToList();
-            var lows = swingPoints.Where(s => s.Type == SwingType.Low).Reverse().Take(3).ToList();
-
-            // Check EQH (Equal Highs)
-            if (highs.Count >= 2)
-            {
-                double diff = Math.Abs(highs[0].Price - highs[1].Price) / Symbol.PipSize;
-                if (diff <= EqhEqlTolerancePips)
-                {
-                    string eqhName = $"EQH_{highs[1].BarIndex}";
-                    Chart.DrawTrendLine(eqhName, highs[1].BarIndex, highs[1].Price, highs[0].BarIndex, highs[1].Price, Color.Red, 1, LineStyle.LinesDots);
-                    Chart.DrawText(eqhName + "_txt", "EQH", highs[0].BarIndex + 1, highs[1].Price, Color.Red);
-                }
-            }
-
-            // Check EQL (Equal Lows)
-            if (lows.Count >= 2)
-            {
-                double diff = Math.Abs(lows[0].Price - lows[1].Price) / Symbol.PipSize;
-                if (diff <= EqhEqlTolerancePips)
-                {
-                    string eqlName = $"EQL_{lows[1].BarIndex}";
-                    Chart.DrawTrendLine(eqlName, lows[1].BarIndex, lows[1].Price, lows[0].BarIndex, lows[1].Price, Color.DeepSkyBlue, 1, LineStyle.LinesDots);
-                    Chart.DrawText(eqlName + "_txt", "EQL", lows[0].BarIndex + 1, lows[1].Price, Color.DeepSkyBlue);
-                }
+                Print($"{icon} HTF Trend changed: {htfTrend}");
             }
         }
 
         // ═══════════════════════════════════════
         //  SMC ENGINE
+        //  BUG FIX #8: DetectFVGs hanya menggunakan candle yang sudah closed
         // ═══════════════════════════════════════
 
         private void UpdateSMCEngine()
@@ -1565,7 +1404,7 @@ namespace cAlgo.Robots
             DetectSwingPoints();
             UpdateMarketStructure();
             DetectOrderBlocks();
-            DetectFVGs();
+            DetectFVGs();        // BUG FIX #8 applied here
             CheckOBMitigation();
             CheckFVGFill();
             PruneSMCObjects();
@@ -1579,7 +1418,7 @@ namespace cAlgo.Robots
             int checkBar = Bars.Count - 1 - SwingLookback;
             if (checkBar < SwingLookback) return;
 
-            // Check for swing high
+            // Swing High
             double high = Bars.HighPrices[checkBar];
             bool isSwingHigh = true;
             for (int i = 1; i <= SwingLookback; i++)
@@ -1590,24 +1429,16 @@ namespace cAlgo.Robots
 
             if (isSwingHigh)
             {
-                // Avoid duplicates
-                bool exists = false;
-                for (int s = swingPoints.Count - 1; s >= Math.Max(0, swingPoints.Count - 5); s--)
-                {
-                    if (swingPoints[s].BarIndex == checkBar) { exists = true; break; }
-                }
+                bool exists = swingPoints.TakeLast(5).Any(s => s.BarIndex == checkBar);
                 if (!exists)
                 {
-                    swingPoints.Add(new SwingPoint
-                    {
-                        Type = SwingType.High,
-                        Price = high,
-                        BarIndex = checkBar
-                    });
+                    swingPoints.Add(new SwingPoint { Type = SwingType.High, Price = high, BarIndex = checkBar });
+                    lastSwingHigh      = high;
+                    lastSwingHighIndex = checkBar;
                 }
             }
 
-            // Check for swing low
+            // Swing Low
             double low = Bars.LowPrices[checkBar];
             bool isSwingLow = true;
             for (int i = 1; i <= SwingLookback; i++)
@@ -1618,28 +1449,20 @@ namespace cAlgo.Robots
 
             if (isSwingLow)
             {
-                bool exists = false;
-                for (int s = swingPoints.Count - 1; s >= Math.Max(0, swingPoints.Count - 5); s--)
-                {
-                    if (swingPoints[s].BarIndex == checkBar) { exists = true; break; }
-                }
+                bool exists = swingPoints.TakeLast(5).Any(s => s.BarIndex == checkBar);
                 if (!exists)
                 {
-                    swingPoints.Add(new SwingPoint
-                    {
-                        Type = SwingType.Low,
-                        Price = low,
-                        BarIndex = checkBar
-                    });
+                    swingPoints.Add(new SwingPoint { Type = SwingType.Low, Price = low, BarIndex = checkBar });
+                    lastSwingLow      = low;
+                    lastSwingLowIndex = checkBar;
                 }
             }
         }
 
         private void UpdateMarketStructure()
         {
-            if (swingPoints.Count < 4) return;
+            if (swingPoints.Count < 2) return;
 
-            // Get latest swing high and swing low
             SwingPoint latestSH = null, prevSH = null;
             SwingPoint latestSL = null, prevSL = null;
 
@@ -1647,153 +1470,128 @@ namespace cAlgo.Robots
             {
                 if (swingPoints[i].Type == SwingType.High)
                 {
-                    if (latestSH == null) latestSH = swingPoints[i];
-                    else if (prevSH == null) { prevSH = swingPoints[i]; }
+                    if (latestSH == null)      latestSH = swingPoints[i];
+                    else if (prevSH == null)   prevSH   = swingPoints[i];
                 }
                 else
                 {
-                    if (latestSL == null) latestSL = swingPoints[i];
-                    else if (prevSL == null) { prevSL = swingPoints[i]; }
+                    if (latestSL == null)      latestSL = swingPoints[i];
+                    else if (prevSL == null)   prevSL   = swingPoints[i];
                 }
-                
-                // Kita hanya butuh 1 pass untuk minimal latestSH & latestSL, prev bisa null
                 if (latestSH != null && latestSL != null && prevSH != null && prevSL != null) break;
             }
 
-            // Ganti syarat dari 4 poin wajib (prevSH/SL wajib) menjadi cuma 2 poin (latestSH/SL)
-            if (latestSH == null || latestSL == null)
-                return;
+            if (latestSH == null || latestSL == null) return;
 
             double currentClose = Bars.ClosePrices.LastValue;
 
-            // ── INISIALISASI TREN (Anti-Undefined) ──
+            // Initial trend detection
             if (smcTrend == SmcTrend.Undefined)
             {
-                // Jika titik terdekat lebih tinggi dari sebelumnya, kita assumsi Bullish
-                if (prevSH != null && latestSH.Price > prevSH.Price) smcTrend = SmcTrend.Bullish;
+                if      (prevSH != null && latestSH.Price > prevSH.Price) smcTrend = SmcTrend.Bullish;
                 else if (prevSL != null && latestSL.Price < prevSL.Price) smcTrend = SmcTrend.Bearish;
-                else if (currentClose > latestSH.Price) smcTrend = SmcTrend.Bullish;
-                else if (currentClose < latestSL.Price) smcTrend = SmcTrend.Bearish;
-                else smcTrend = SmcTrend.Bullish; // Default fallback jika semua sideways patah tewas
+                else if (currentClose > latestSH.Price)                   smcTrend = SmcTrend.Bullish;
+                else if (currentClose < latestSL.Price)                   smcTrend = SmcTrend.Bearish;
+                else                                                       smcTrend = SmcTrend.Bullish;
 
-                if (smcTrend != SmcTrend.Undefined)
-                    Print($"📊 SMC Initial Trend detected: {smcTrend}");
+                Print($"📊 SMC Initial: {smcTrend}");
             }
 
-            // ── BOS & CHoCH DETECTION ──
+            double minMove = Symbol.PipSize * 2; // BUG: menghindari micro-flip dari noise
+
             if (smcTrend == SmcTrend.Bullish)
             {
-                // Bullish BOS: Harga menembus puncak tertinggi yang paling baru (latestSH)
-                if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
+                // BOS Bullish: tembus atas
+                if (currentClose > latestSH.Price + minMove)
                 {
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSH.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSH.Price;
-                        Print($"📊 SMC BOS ↑ Bullish continuation above {latestSH.Price:F2}");
+                        Print($"📊 BOS ↑ Bullish above {latestSH.Price:F2}");
                     }
                 }
-                // Bearish CHoCH: Tren berbalik menjadi Bearish karena harga menjebol lembah terbaru (latestSL)
-                else if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
+                // CHoCH → Bearish
+                else if (currentClose < latestSL.Price - minMove)
                 {
                     smcTrend = SmcTrend.Bearish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    Print($"🔄 SMC CHoCH → Bearish! Broke below latest support at {latestSL.Price:F2}");
+                    Print($"🔄 CHoCH → Bearish! Broke support {latestSL.Price:F2}");
                 }
             }
             else if (smcTrend == SmcTrend.Bearish)
             {
-                // Bearish BOS: Harga menembus lembah terdalam yang paling baru (latestSL)
-                if (currentClose < latestSL.Price && Math.Abs(latestSL.Price - currentClose) > Symbol.PipSize)
+                // BOS Bearish: tembus bawah
+                if (currentClose < latestSL.Price - minMove)
                 {
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    // BOS dedup: catat supaya tidak menge-print ulang di level yang sama
                     if (Math.Abs(latestSL.Price - lastBosLevel) > Symbol.PipSize)
                     {
                         lastBosLevel = latestSL.Price;
-                        Print($"📊 SMC BOS ↓ Bearish continuation below {latestSL.Price:F2}");
+                        Print($"📊 BOS ↓ Bearish below {latestSL.Price:F2}");
                     }
                 }
-                // Bullish CHoCH: Tren berbalik menjadi Bullish karena harga menembus puncak terbaru (latestSH)
-                else if (currentClose > latestSH.Price && Math.Abs(currentClose - latestSH.Price) > Symbol.PipSize)
+                // CHoCH → Bullish
+                else if (currentClose > latestSH.Price + minMove)
                 {
                     smcTrend = SmcTrend.Bullish;
-                    lastSwingHigh = latestSH.Price;
-                    lastSwingLow = latestSL.Price;
-                    Print($"🔄 SMC CHoCH → Bullish! Broke above latest resistance at {latestSH.Price:F2}");
+                    Print($"🔄 CHoCH → Bullish! Broke resistance {latestSH.Price:F2}");
                 }
             }
         }
 
         private void DetectOrderBlocks()
         {
-            // Order Block = last opposing candle before an impulse move
-            // We check the candle before a BOS-level move
             int currentBar = Bars.Count - 1;
             if (currentBar < 3) return;
 
-            int checkBar = currentBar - 1;
+            int checkBar = currentBar - 1; // candle yang baru saja closed
 
-            // Bullish OB: bearish candle followed by strong bullish impulse
             double prevClose = Bars.ClosePrices[checkBar - 1];
-            double prevOpen = Bars.OpenPrices[checkBar - 1];
+            double prevOpen  = Bars.OpenPrices[checkBar - 1];
             double currClose = Bars.ClosePrices[checkBar];
-            double currOpen = Bars.OpenPrices[checkBar];
+            double currOpen  = Bars.OpenPrices[checkBar];
 
-            bool prevBearish = prevClose < prevOpen;
-            bool currBullish = currClose > currOpen;
-            double impulseSize = Math.Abs(currClose - currOpen) / Symbol.PipSize;
+            bool prevBearish  = prevClose < prevOpen;
+            bool currBullish  = currClose > currOpen;
+            double impulsePips = Math.Abs(currClose - currOpen) / Symbol.PipSize;
 
-            // Bullish Order Block: bearish candle → strong bullish candle
-            if (prevBearish && currBullish && impulseSize > OBMinImpulsePips)
+            // Bullish OB: bearish candle → strong bullish impulse
+            if (prevBearish && currBullish && impulsePips >= OBMinImpulsePips)
             {
-                // Check if OB already exists at this bar
-                bool exists = false;
-                foreach (var ob in orderBlocks)
-                    if (ob.BarIndex == checkBar - 1 && ob.IsBullish) { exists = true; break; }
-
+                bool exists = orderBlocks.Any(ob => ob.BarIndex == checkBar - 1 && ob.IsBullish);
                 if (!exists)
                 {
                     orderBlocks.Add(new OrderBlock
                     {
-                        BarIndex = checkBar - 1,
-                        PriceHigh = Math.Max(prevOpen, prevClose),
-                        PriceLow = Bars.LowPrices[checkBar - 1],
-                        IsBullish = true,
+                        BarIndex   = checkBar - 1,
+                        PriceHigh  = Math.Max(prevOpen, prevClose),
+                        PriceLow   = Bars.LowPrices[checkBar - 1],
+                        IsBullish  = true,
                         IsMitigated = false,
-                        CreatedAt = currentBar
+                        CreatedAt  = currentBar
                     });
-                    Print($"🟩 Bullish OB detected at bar {checkBar - 1}: {Bars.LowPrices[checkBar - 1]:F2}-{Math.Max(prevOpen, prevClose):F2}");
+                    Print($"🟩 Bull OB: {Bars.LowPrices[checkBar-1]:F2}-{Math.Max(prevOpen,prevClose):F2}");
                 }
             }
 
-            // Bearish Order Block: bullish candle → strong bearish candle
-            bool prevBullish = prevClose > prevOpen;
-            bool currBearish = currClose < currOpen;
+            bool prevBullish   = prevClose > prevOpen;
+            bool currBearish   = currClose < currOpen;
             double impulseDown = Math.Abs(currOpen - currClose) / Symbol.PipSize;
 
-            if (prevBullish && currBearish && impulseDown > OBMinImpulsePips)
+            // Bearish OB: bullish candle → strong bearish impulse
+            if (prevBullish && currBearish && impulseDown >= OBMinImpulsePips)
             {
-                bool exists = false;
-                foreach (var ob in orderBlocks)
-                    if (ob.BarIndex == checkBar - 1 && !ob.IsBullish) { exists = true; break; }
-
+                bool exists = orderBlocks.Any(ob => ob.BarIndex == checkBar - 1 && !ob.IsBullish);
                 if (!exists)
                 {
                     orderBlocks.Add(new OrderBlock
                     {
-                        BarIndex = checkBar - 1,
-                        PriceHigh = Bars.HighPrices[checkBar - 1],
-                        PriceLow = Math.Min(prevOpen, prevClose),
-                        IsBullish = false,
+                        BarIndex   = checkBar - 1,
+                        PriceHigh  = Bars.HighPrices[checkBar - 1],
+                        PriceLow   = Math.Min(prevOpen, prevClose),
+                        IsBullish  = false,
                         IsMitigated = false,
-                        CreatedAt = currentBar
+                        CreatedAt  = currentBar
                     });
-                    Print($"🟥 Bearish OB detected at bar {checkBar - 1}: {Math.Min(prevOpen, prevClose):F2}-{Bars.HighPrices[checkBar - 1]:F2}");
+                    Print($"🟥 Bear OB: {Math.Min(prevOpen,prevClose):F2}-{Bars.HighPrices[checkBar-1]:F2}");
                 }
             }
         }
@@ -1801,59 +1599,52 @@ namespace cAlgo.Robots
         private void DetectFVGs()
         {
             int currentBar = Bars.Count - 1;
-            if (currentBar < 3) return;
+            // BUG FIX #8: Gunakan i = currentBar - 2 (middle candle dari 3 candle yang SEMUA sudah closed)
+            // Sebelumnya i = currentBar - 1, yang mana candle i+1 = currentBar masih berjalan
+            int i = currentBar - 2;
+            if (i < 1) return;
 
-            // Cap active FVGs to prevent accumulation
-            int activeFVGs = 0;
-            foreach (var f in fvgList)
-                if (!f.IsFilled && currentBar - f.BarIndex <= OBMaxAge / 2) activeFVGs++;
+            // Cap active FVGs
+            int activeFVGs = fvgList.Count(f => !f.IsFilled && currentBar - f.BarIndex <= OBMaxAge / 2);
             if (activeFVGs >= MaxActiveFVGs) return;
 
-            // Check 3-candle pattern ending at checkBar
-            int i = currentBar - 1; // middle candle
             double minGapSize = FVGMinPips * Symbol.PipSize;
 
-            // Bullish FVG: candle[i-1].High < candle[i+1].Low (gap up)
+            // Bullish FVG: gap antara high candle[i-1] dan low candle[i+1]
             double highBefore = Bars.HighPrices[i - 1];
-            double lowAfter = Bars.LowPrices[i + 1];
+            double lowAfter   = Bars.LowPrices[i + 1]; // i+1 sekarang adalah closed candle
             if (lowAfter > highBefore && (lowAfter - highBefore) >= minGapSize)
             {
-                bool exists = false;
-                foreach (var fvg in fvgList)
-                    if (fvg.BarIndex == i && fvg.IsBullish) { exists = true; break; }
-
+                bool exists = fvgList.Any(f => f.BarIndex == i && f.IsBullish);
                 if (!exists)
                 {
                     fvgList.Add(new FairValueGap
                     {
-                        BarIndex = i,
+                        BarIndex  = i,
                         PriceHigh = lowAfter,
-                        PriceLow = highBefore,
+                        PriceLow  = highBefore,
                         IsBullish = true,
-                        IsFilled = false,
+                        IsFilled  = false,
                         CreatedAt = currentBar
                     });
                 }
             }
 
-            // Bearish FVG: candle[i-1].Low > candle[i+1].High (gap down)
-            double lowBefore = Bars.LowPrices[i - 1];
-            double highAfter = Bars.HighPrices[i + 1];
+            // Bearish FVG: gap antara low candle[i-1] dan high candle[i+1]
+            double lowBefore  = Bars.LowPrices[i - 1];
+            double highAfter  = Bars.HighPrices[i + 1];
             if (lowBefore > highAfter && (lowBefore - highAfter) >= minGapSize)
             {
-                bool exists = false;
-                foreach (var fvg in fvgList)
-                    if (fvg.BarIndex == i && !fvg.IsBullish) { exists = true; break; }
-
+                bool exists = fvgList.Any(f => f.BarIndex == i && !f.IsBullish);
                 if (!exists)
                 {
                     fvgList.Add(new FairValueGap
                     {
-                        BarIndex = i,
+                        BarIndex  = i,
                         PriceHigh = lowBefore,
-                        PriceLow = highAfter,
+                        PriceLow  = highAfter,
                         IsBullish = false,
-                        IsFilled = false,
+                        IsFilled  = false,
                         CreatedAt = currentBar
                     });
                 }
@@ -1862,65 +1653,42 @@ namespace cAlgo.Robots
 
         private void CheckOBMitigation()
         {
-            double currentClose = Bars.ClosePrices.LastValue;
+            double close = Bars.ClosePrices.LastValue;
             foreach (var ob in orderBlocks)
             {
                 if (ob.IsMitigated) continue;
-
-                // Bullish OB mitigated when price closes below its low
-                if (ob.IsBullish && currentClose < ob.PriceLow)
-                {
-                    ob.IsMitigated = true;
-                    Print($"💥 Bullish OB mitigated at {ob.PriceLow:F2}");
-                }
-                // Bearish OB mitigated when price closes above its high
-                else if (!ob.IsBullish && currentClose > ob.PriceHigh)
-                {
-                    ob.IsMitigated = true;
-                    Print($"💥 Bearish OB mitigated at {ob.PriceHigh:F2}");
-                }
+                if (ob.IsBullish  && close < ob.PriceLow)  { ob.IsMitigated = true; Print($"💥 Bull OB mitigated @ {ob.PriceLow:F2}"); }
+                if (!ob.IsBullish && close > ob.PriceHigh) { ob.IsMitigated = true; Print($"💥 Bear OB mitigated @ {ob.PriceHigh:F2}"); }
             }
         }
 
         private void CheckFVGFill()
         {
-            double currentHigh = Bars.HighPrices.LastValue;
-            double currentLow = Bars.LowPrices.LastValue;
-
+            double high = Bars.HighPrices.LastValue;
+            double low  = Bars.LowPrices.LastValue;
             foreach (var fvg in fvgList)
             {
                 if (fvg.IsFilled) continue;
-
-                // Bullish FVG filled when price drops into the gap
-                if (fvg.IsBullish && currentLow <= fvg.PriceLow)
-                    fvg.IsFilled = true;
-                // Bearish FVG filled when price rises into the gap
-                else if (!fvg.IsBullish && currentHigh >= fvg.PriceHigh)
-                    fvg.IsFilled = true;
+                if (fvg.IsBullish  && low  <= fvg.PriceLow)  fvg.IsFilled = true;
+                if (!fvg.IsBullish && high >= fvg.PriceHigh) fvg.IsFilled = true;
             }
         }
 
         private bool IsInOrderBlock(double price, TradeType direction)
         {
             int currentBar = Bars.Count - 1;
-            double tolerance = 2.0 * Symbol.PipSize; // small proximity buffer
+            double tolerance = 2.0 * Symbol.PipSize;
 
             foreach (var ob in orderBlocks)
             {
-                if (ob.IsMitigated) continue;
-                if (currentBar - ob.BarIndex > OBMaxAge) continue;
-
-                // Buy → must be in/near a Bullish OB (demand zone)
+                if (ob.IsMitigated || currentBar - ob.BarIndex > OBMaxAge) continue;
                 if (direction == TradeType.Buy && ob.IsBullish)
                 {
-                    if (price >= ob.PriceLow - tolerance && price <= ob.PriceHigh + tolerance)
-                        return true;
+                    if (price >= ob.PriceLow - tolerance && price <= ob.PriceHigh + tolerance) return true;
                 }
-                // Sell → must be in/near a Bearish OB (supply zone)
                 else if (direction == TradeType.Sell && !ob.IsBullish)
                 {
-                    if (price >= ob.PriceLow - tolerance && price <= ob.PriceHigh + tolerance)
-                        return true;
+                    if (price >= ob.PriceLow - tolerance && price <= ob.PriceHigh + tolerance) return true;
                 }
             }
             return false;
@@ -1933,18 +1701,14 @@ namespace cAlgo.Robots
 
             foreach (var fvg in fvgList)
             {
-                if (fvg.IsFilled) continue;
-                if (currentBar - fvg.BarIndex > OBMaxAge / 2) continue; // FVG expires faster
-
+                if (fvg.IsFilled || currentBar - fvg.BarIndex > OBMaxAge / 2) continue;
                 if (direction == TradeType.Buy && fvg.IsBullish)
                 {
-                    if (price >= fvg.PriceLow - tolerance && price <= fvg.PriceHigh + tolerance)
-                        return true;
+                    if (price >= fvg.PriceLow - tolerance && price <= fvg.PriceHigh + tolerance) return true;
                 }
                 else if (direction == TradeType.Sell && !fvg.IsBullish)
                 {
-                    if (price >= fvg.PriceLow - tolerance && price <= fvg.PriceHigh + tolerance)
-                        return true;
+                    if (price >= fvg.PriceLow - tolerance && price <= fvg.PriceHigh + tolerance) return true;
                 }
             }
             return false;
@@ -1954,15 +1718,66 @@ namespace cAlgo.Robots
         {
             int currentBar = Bars.Count - 1;
 
-            // Keep only last 100 swing points
             if (swingPoints.Count > 100)
                 swingPoints.RemoveRange(0, swingPoints.Count - 100);
 
-            // Remove old mitigated OBs
-            orderBlocks.RemoveAll(ob => ob.IsMitigated && currentBar - ob.BarIndex > OBMaxAge * 2);
+            orderBlocks.RemoveAll(ob =>  ob.IsMitigated && currentBar - ob.BarIndex > OBMaxAge * 2);
+            fvgList.RemoveAll(fvg => fvg.IsFilled  && currentBar - fvg.BarIndex > OBMaxAge / 2);
+        }
 
-            // Remove old filled FVGs
-            fvgList.RemoveAll(fvg => fvg.IsFilled && currentBar - fvg.BarIndex > OBMaxAge / 2);
+        // ═══════════════════════════════════════
+        //  LUXALGO VISUAL OVERLAYS
+        // ═══════════════════════════════════════
+
+        private void DrawVisualPDZones()
+        {
+            if (lastSwingHigh == 0 || lastSwingLow == double.MaxValue) return;
+
+            double equilibrium = (lastSwingHigh + lastSwingLow) / 2.0;
+            int startBar = Math.Min(lastSwingHighIndex, lastSwingLowIndex);
+            if (startBar <= 0) startBar = Math.Max(0, Bars.Count - 60);
+            int endBar = Bars.Count + 5;
+
+            Chart.RemoveObject("PDTopLine"); Chart.RemoveObject("PDTopTxt");
+            Chart.RemoveObject("PDEqLine");  Chart.RemoveObject("PDEqTxt");
+            Chart.RemoveObject("PDBotLine"); Chart.RemoveObject("PDBotTxt");
+
+            Chart.DrawTrendLine("PDTopLine", startBar, lastSwingHigh, endBar, lastSwingHigh, Color.Red, 1, LineStyle.Solid);
+            Chart.DrawText("PDTopTxt", "Premium", endBar + 1, lastSwingHigh, Color.Red);
+            Chart.DrawTrendLine("PDEqLine", startBar, equilibrium, endBar, equilibrium, Color.DarkOrange, 1, LineStyle.LinesDots);
+            Chart.DrawText("PDEqTxt", "Equilibrium", endBar + 1, equilibrium, Color.DarkOrange);
+            Chart.DrawTrendLine("PDBotLine", startBar, lastSwingLow, endBar, lastSwingLow, Color.DeepSkyBlue, 1, LineStyle.Solid);
+            Chart.DrawText("PDBotTxt", "Discount", endBar + 1, lastSwingLow, Color.DeepSkyBlue);
+        }
+
+        private void CheckVisualEqhEql()
+        {
+            if (swingPoints.Count < 3) return;
+
+            var highs = swingPoints.Where(s => s.Type == SwingType.High).Reverse().Take(3).ToList();
+            var lows  = swingPoints.Where(s => s.Type == SwingType.Low).Reverse().Take(3).ToList();
+
+            if (highs.Count >= 2)
+            {
+                double diff = Math.Abs(highs[0].Price - highs[1].Price) / Symbol.PipSize;
+                if (diff <= EqhEqlTolerancePips)
+                {
+                    string name = $"EQH_{highs[1].BarIndex}";
+                    Chart.DrawTrendLine(name, highs[1].BarIndex, highs[1].Price, highs[0].BarIndex, highs[1].Price, Color.Red, 1, LineStyle.LinesDots);
+                    Chart.DrawText(name + "_txt", "EQH", highs[0].BarIndex + 1, highs[1].Price, Color.Red);
+                }
+            }
+
+            if (lows.Count >= 2)
+            {
+                double diff = Math.Abs(lows[0].Price - lows[1].Price) / Symbol.PipSize;
+                if (diff <= EqhEqlTolerancePips)
+                {
+                    string name = $"EQL_{lows[1].BarIndex}";
+                    Chart.DrawTrendLine(name, lows[1].BarIndex, lows[1].Price, lows[0].BarIndex, lows[1].Price, Color.DeepSkyBlue, 1, LineStyle.LinesDots);
+                    Chart.DrawText(name + "_txt", "EQL", lows[0].BarIndex + 1, lows[1].Price, Color.DeepSkyBlue);
+                }
+            }
         }
 
         // ═══════════════════════════════════════
@@ -1973,25 +1788,16 @@ namespace cAlgo.Robots
         {
             int currentBar = Bars.Count - 1;
 
-            // Identify the single latest Bullish and Bearish OB for visual display
-            var latestBullishOB = orderBlocks.LastOrDefault(ob => ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
-            var latestBearishOB = orderBlocks.LastOrDefault(ob => !ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
+            var latestBullOB = orderBlocks.LastOrDefault(ob =>  ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
+            var latestBearOB = orderBlocks.LastOrDefault(ob => !ob.IsBullish && !ob.IsMitigated && currentBar - ob.BarIndex <= OBMaxAge);
 
-            // Draw Order Blocks (Only Latest)
             foreach (var ob in orderBlocks)
             {
-                string obName = $"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}";
+                string obName  = $"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}";
                 string lblName = $"OBL_{ob.BarIndex}";
-                
-                // Selalu hapus visual ob lama untuk menjaga kebersihan chart
-                try
-                {
-                    Chart.RemoveObject(obName);
-                    Chart.RemoveObject(lblName);
-                } catch { }
+                try { Chart.RemoveObject(obName); Chart.RemoveObject(lblName); } catch { }
 
-                // Hanya gambar visual jika ob ini adalah yang TERBARU dan belum dimitigasi
-                if (ob != latestBullishOB && ob != latestBearishOB) continue;
+                if (ob != latestBullOB && ob != latestBearOB) continue;
                 if (ob.IsMitigated || currentBar - ob.BarIndex > OBMaxAge) continue;
 
                 Color obColor = ob.IsBullish
@@ -2004,29 +1810,24 @@ namespace cAlgo.Robots
                         Math.Min(ob.BarIndex + OBMaxAge, currentBar + 10), ob.PriceLow, obColor);
                     if (rect != null) { rect.IsFilled = true; rect.Thickness = 1; }
 
-                    // Label
                     string lblText = ob.IsBullish ? "OB 🟩" : "OB 🟥";
-                    var lbl = Chart.DrawText(lblName, lblText, ob.BarIndex, ob.IsBullish ? ob.PriceLow : ob.PriceHigh,
+                    var lbl = Chart.DrawText(lblName, lblText, ob.BarIndex,
+                        ob.IsBullish ? ob.PriceLow : ob.PriceHigh,
                         ob.IsBullish ? Color.FromArgb(200, 0, 200, 100) : Color.FromArgb(200, 200, 50, 50));
                     if (lbl != null) { lbl.FontSize = 7; lbl.IsBold = true; }
                 }
                 catch { }
             }
 
-            // Identify the single latest Bullish and Bearish FVG for visual display
-            var latestBullishFVG = fvgList.LastOrDefault(fvg => fvg.IsBullish && !fvg.IsFilled && currentBar - fvg.BarIndex <= OBMaxAge / 2);
-            var latestBearishFVG = fvgList.LastOrDefault(fvg => !fvg.IsBullish && !fvg.IsFilled && currentBar - fvg.BarIndex <= OBMaxAge / 2);
+            var latestBullFVG = fvgList.LastOrDefault(f =>  f.IsBullish && !f.IsFilled && currentBar - f.BarIndex <= OBMaxAge / 2);
+            var latestBearFVG = fvgList.LastOrDefault(f => !f.IsBullish && !f.IsFilled && currentBar - f.BarIndex <= OBMaxAge / 2);
 
-            // Draw FVGs (Only Latest)
             foreach (var fvg in fvgList)
             {
                 string fvgName = $"FVG_{fvg.BarIndex}_{(fvg.IsBullish ? "B" : "S")}";
-                
-                // Selalu hapus visual lama
                 try { Chart.RemoveObject(fvgName); } catch { }
 
-                // Hanya gambar jika ini yang TERBARU dan belum tertutup penuh
-                if (fvg != latestBullishFVG && fvg != latestBearishFVG) continue;
+                if (fvg != latestBullFVG && fvg != latestBearFVG) continue;
                 if (fvg.IsFilled || currentBar - fvg.BarIndex > OBMaxAge / 2) continue;
 
                 Color fvgColor = fvg.IsBullish
@@ -2042,18 +1843,20 @@ namespace cAlgo.Robots
                 catch { }
             }
 
-            // Draw swing points (last 20)
-            int drawCount = Math.Min(20, swingPoints.Count);
-            for (int s = swingPoints.Count - drawCount; s < swingPoints.Count; s++)
+            // Swing points (last 20)
+            int drawFrom = Math.Max(0, swingPoints.Count - 20);
+            for (int s = drawFrom; s < swingPoints.Count; s++)
             {
-                var sp = swingPoints[s];
-                string spName = $"SP_{sp.BarIndex}_{sp.Type}";
+                var sp     = swingPoints[s];
+                string name = $"SP_{sp.BarIndex}_{sp.Type}";
                 try
                 {
-                    Chart.RemoveObject(spName); 
-                    string marker = sp.Type == SwingType.High ? "▼" : "▲";
-                    Color spColor = sp.Type == SwingType.High ? Color.FromArgb(180, 255, 100, 100) : Color.FromArgb(180, 100, 255, 100);
-                    var txt = Chart.DrawText(spName, marker, sp.BarIndex, sp.Price, spColor);
+                    Chart.RemoveObject(name);
+                    string marker  = sp.Type == SwingType.High ? "▼" : "▲";
+                    Color spColor  = sp.Type == SwingType.High
+                        ? Color.FromArgb(180, 255, 100, 100)
+                        : Color.FromArgb(180, 100, 255, 100);
+                    var txt = Chart.DrawText(name, marker, sp.BarIndex, sp.Price, spColor);
                     if (txt != null) { txt.FontSize = 8; txt.IsBold = true; }
                 }
                 catch { }
@@ -2062,17 +1865,15 @@ namespace cAlgo.Robots
             // SMC Trend label
             try
             {
-                Chart.RemoveObject("SMC_TREND");
-                string trendTxt = $"SMC: {smcTrend}";
                 Color trendColor = smcTrend == SmcTrend.Bullish ? Color.LimeGreen :
                                    smcTrend == SmcTrend.Bearish ? Color.Tomato : Color.Gray;
-                Chart.DrawStaticText("SMC_TREND", trendTxt, VerticalAlignment.Top, HorizontalAlignment.Right, trendColor);
+                Chart.DrawStaticText("SMC_TREND", $"SMC: {smcTrend}", VerticalAlignment.Top, HorizontalAlignment.Right, trendColor);
             }
             catch { }
         }
 
         // ═══════════════════════════════════════
-        //  DRAWING (SIMPLIFIED)
+        //  DRAWING
         // ═══════════════════════════════════════
 
         private void DrawCurrentCandleBubbles(CandleFootprint fp)
@@ -2080,38 +1881,39 @@ namespace cAlgo.Robots
             foreach (var lvl in fp.PriceLevels)
             {
                 int delta = lvl.Value.BuyCount - lvl.Value.SellCount;
-                int absDelta = Math.Abs(delta);
-                if (absDelta >= MinDeltaPerLevel && lvl.Value.TotalCount >= MinVolumePerLevel)
+                if (Math.Abs(delta) >= MinDeltaPerLevel && lvl.Value.TotalCount >= MinVolumePerLevel)
                     DrawFootprintBubble(fp.BarIndex, lvl.Value, delta, delta > 0);
             }
         }
 
         private void DrawFootprintBubble(int barIndex, PriceLevel level, int delta, bool isBuy)
         {
-            int absDelta = Math.Abs(delta);
-            Color baseColor = isBuy ? Color.Green : Color.Red;
-            Color color = Color.FromArgb(BubbleOpacity, baseColor.R, baseColor.G, baseColor.B);
+            int absDelta  = Math.Abs(delta);
+            Color base_c  = isBuy ? Color.Green : Color.Red;
+            Color color   = Color.FromArgb(BubbleOpacity, base_c.R, base_c.G, base_c.B);
 
             double high = Bars.HighPrices[barIndex];
-            double low = Bars.LowPrices[barIndex];
+            double low  = Bars.LowPrices[barIndex];
             double range = high - low;
             if (range < Symbol.PipSize) return;
 
             double sizePct = Math.Min(1.5, 0.05 + (absDelta / 20.0) * 1.0);
-            double radius = range * sizePct * 0.8;
-            double minR = Symbol.PipSize >= 0.1 ? range * 0.005 : Symbol.PipSize * 2;
+            double radius  = range * sizePct * 0.8;
+            double minR    = Symbol.PipSize >= 0.1 ? range * 0.005 : Symbol.PipSize * 2;
             if (radius < minR) radius = minR;
 
             DateTime barTime = Bars.OpenTimes[barIndex];
-            TimeSpan barDur = barIndex > 0 ? Bars.OpenTimes[barIndex] - Bars.OpenTimes[barIndex - 1] : TimeSpan.FromMinutes(1);
-            TimeSpan width = TimeSpan.FromTicks((long)(barDur.Ticks * 0.5));
+            TimeSpan barDur  = barIndex > 0
+                ? Bars.OpenTimes[barIndex] - Bars.OpenTimes[barIndex - 1]
+                : TimeSpan.FromMinutes(1);
+            TimeSpan width   = TimeSpan.FromTicks((long)(barDur.Ticks * 0.5));
 
-            string name = $"FB_{barIndex}_{level.Price:F5}";
-
+            string name = $"FB_{barIndex}_{level.Price:F2}";
             try
             {
-                var e = Chart.DrawEllipse(name, barTime.Subtract(width), level.Price + radius,
-                    barTime.Add(width), level.Price - radius, color);
+                var e = Chart.DrawEllipse(name,
+                    barTime.Subtract(width), level.Price + radius,
+                    barTime.Add(width),      level.Price - radius, color);
                 if (e != null) { e.IsFilled = true; e.Thickness = 1; }
             }
             catch { }
@@ -2138,7 +1940,6 @@ namespace cAlgo.Robots
                     Math.Min(zone.LastBarIndex + 5, Bars.Count - 1), zone.PriceMin, zoneColor);
                 if (rect != null) { rect.IsFilled = true; rect.Thickness = 1; }
 
-                // Virgin marker
                 if (virginClusters.Contains(zone.ZoneId))
                 {
                     string vName = $"V_{zone.ZoneId}";
@@ -2156,6 +1957,47 @@ namespace cAlgo.Robots
                 DrawSingleClusterZone(zone);
         }
 
+        private void LogDashboard()
+        {
+            int currentBar = Bars.Count - 1;
+            double price   = Bars.ClosePrices.LastValue;
+
+            Print("─────────────────────────────────────────────");
+            Print($"  BAR #{currentBar} | {Bars.OpenTimes.LastValue:HH:mm:ss} | Price: {price:F2}");
+
+            if (EnableSMAFilter)
+            {
+                double sv = sma.Result.LastValue;
+                string pos = price > sv ? "ABOVE ▲" : "BELOW ▼";
+                Print($"  📈 SMA({SmaPeriod}): {sv:F2} | {pos} ({(price - sv) / Symbol.PipSize:+0.0;-0.0}p)");
+            }
+
+            if (EnableHTFFilter)
+            {
+                string htfIcon = htfTrend == TrendDirection.Up ? "📈 UP" :
+                                 htfTrend == TrendDirection.Down ? "📉 DOWN" : "➡️ NEUTRAL";
+                Print($"  🕐 HTF({HTFTimeframe}): {htfIcon}");
+            }
+
+            if (EnableSMC)
+            {
+                string smcIcon = smcTrend == SmcTrend.Bullish ? "🟢 BULLISH" :
+                                 smcTrend == SmcTrend.Bearish ? "🔴 BEARISH" : "⚪ UNDEFINED";
+                Print($"  🏦 SMC: {smcIcon} | OB: {orderBlocks.Count(o => !o.IsMitigated)} | FVG: {fvgList.Count(f => !f.IsFilled)}");
+            }
+
+            int virginCount = virginClusters.Count;
+            int buyZones  = clusterZones.Count(z => virginClusters.Contains(z.ZoneId) && z.Dominance == ClusterDominance.BuyDominated);
+            int sellZones = clusterZones.Count(z => virginClusters.Contains(z.ZoneId) && z.Dominance == ClusterDominance.SellDominated);
+            Print($"  🫧 Zones: {virginCount} virgin ({buyZones} Buy / {sellZones} Sell) | Total: {clusterZones.Count}");
+
+            var openPos  = Positions.FindAll(BotLabel, SymbolName);
+            double pnl   = Account.Equity - dailyStartBalance;
+            Print($"  💰 Pos: {openPos.Length}/{MaxPositions} | Trades: {dailyTradeCount}/{MaxTradesPerDay} | P&L: {pnl:+0.00;-0.00}");
+            Print($"  🧠 Markov: {currentMarketState} | Session: {(IsValidSessionToTrade() ? "✅" : "🚫")}");
+            Print("─────────────────────────────────────────────");
+        }
+
         // ═══════════════════════════════════════
         //  HELPERS
         // ═══════════════════════════════════════
@@ -2165,11 +2007,11 @@ namespace cAlgo.Robots
             int barCount = Bars.Count;
             if (barCount == 0) return 0;
 
-            // Fast path: cached bar
             if (lastKnownBarIndex >= 0 && lastKnownBarIndex < barCount)
             {
                 DateTime start = Bars.OpenTimes[lastKnownBarIndex];
-                DateTime end = lastKnownBarIndex < barCount - 1 ? Bars.OpenTimes[lastKnownBarIndex + 1] : Server.Time;
+                DateTime end   = lastKnownBarIndex < barCount - 1
+                    ? Bars.OpenTimes[lastKnownBarIndex + 1] : Server.Time;
                 if (time >= start && time < end) return lastKnownBarIndex;
 
                 int next = lastKnownBarIndex + 1;
@@ -2184,7 +2026,6 @@ namespace cAlgo.Robots
                 }
             }
 
-            // Binary search fallback
             int lo = 0, hi = barCount - 1;
             while (lo < hi)
             {
@@ -2196,127 +2037,121 @@ namespace cAlgo.Robots
             return lo;
         }
 
-        private double RoundToPip(double price)
-        {
-            double pip = Symbol.PipSize;
-            if (pip >= 0.1)
-            {
-                double group;
-                if (price >= 10000) group = 50;
-                else if (price >= 1000) group = 10;
-                else if (price >= 100) group = 5;
-                else group = 1;
-                return Math.Round(price / group) * group;
-            }
-            return Math.Round(price / pip) * pip;
-        }
-
         private void PruneOldFootprints()
         {
             int threshold = Bars.Count - 1 - ClusterLookback * 2;
             if (threshold <= 0) return;
 
-            var toRemove = new List<int>();
-            foreach (var key in candleFootprints.Keys)
-                if (key < threshold) toRemove.Add(key);
-
+            var toRemove = candleFootprints.Keys.Where(k => k < threshold).ToList();
             foreach (var k in toRemove)
                 candleFootprints.Remove(k);
 
-            // Also prune SMC visuals for removed objects
+            // BUG FIX #6: Bersihkan juga clusterZones yang terlalu tua dan tidak relevant
+            int currentBar = Bars.Count - 1;
+            int maxZones = 500;
+            if (clusterZones.Count > maxZones)
+            {
+                // Hapus zona paling lama yang bukan virgin
+                var toRemoveZones = clusterZones
+                    .Where(z => !virginClusters.Contains(z.ZoneId))
+                    .OrderBy(z => z.LastBarIndex)
+                    .Take(clusterZones.Count - maxZones)
+                    .ToList();
+
+                foreach (var z in toRemoveZones)
+                {
+                    try { Chart.RemoveObject($"CZ_{z.ZoneId}"); Chart.RemoveObject($"V_{z.ZoneId}"); } catch { }
+                    clusterZones.Remove(z);
+                }
+            }
+
             if (EnableSMC)
             {
-                int currentBar = Bars.Count - 1;
-                // Clean up old OB visuals
-                for (int i = orderBlocks.Count - 1; i >= 0; i--)
+                foreach (var ob in orderBlocks.Where(o => o.IsMitigated && currentBar - o.BarIndex > OBMaxAge * 2).ToList())
                 {
-                    if (orderBlocks[i].IsMitigated || currentBar - orderBlocks[i].BarIndex > OBMaxAge * 2)
+                    try
                     {
-                        try
-                        {
-                            Chart.RemoveObject($"OB_{orderBlocks[i].BarIndex}_{(orderBlocks[i].IsBullish ? "B" : "S")}");
-                            Chart.RemoveObject($"OBL_{orderBlocks[i].BarIndex}");
-                        }
-                        catch { }
+                        Chart.RemoveObject($"OB_{ob.BarIndex}_{(ob.IsBullish ? "B" : "S")}");
+                        Chart.RemoveObject($"OBL_{ob.BarIndex}");
                     }
+                    catch { }
                 }
             }
         }
-
 
         // ═══════════════════════════════════════
         //  ENUMS & DATA CLASSES
         // ═══════════════════════════════════════
 
-        public enum TrendDirection { Up, Down, Neutral }
+        public enum TrendDirection   { Up, Down, Neutral }
         public enum ClusterDominance { BuyDominated, SellDominated, Consolidated }
-        public enum SmcTrend { Bullish, Bearish, Ranging, Undefined }
-        public enum SwingType { High, Low }
-        public enum MarketState { Bullish, Bearish, Flat }
+        public enum SmcTrend         { Bullish, Bearish, Ranging, Undefined }
+        public enum SwingType        { High, Low }
+        public enum MarketState      { Bullish, Bearish, Flat }
 
         private class CandleFootprint
         {
             public int BarIndex { get; set; }
             public DateTime BarTime { get; set; }
             public Dictionary<double, PriceLevel> PriceLevels { get; set; } = new Dictionary<double, PriceLevel>();
-            public int TotalTicks { get; set; }
-            public int TotalBuyCount { get; set; }
+            public int TotalTicks     { get; set; }
+            public int TotalBuyCount  { get; set; }
             public int TotalSellCount { get; set; }
             public double LastBid { get; set; }
             public double LastAsk { get; set; }
-            public bool IsFinalized { get; set; }
+            public bool IsFinalized   { get; set; }
         }
 
         private class PriceLevel
         {
-            public double Price { get; set; }
-            public int BuyCount { get; set; }
-            public int SellCount { get; set; }
-            public int TotalCount { get; set; }
+            public double Price    { get; set; }
+            public int BuyCount    { get; set; }
+            public int SellCount   { get; set; }
+            public int TotalCount  { get; set; }
         }
 
         private class ClusterZone
         {
-            public string ZoneId { get; set; }
-            public double CenterPrice { get; set; }
-            public double PriceMin { get; set; }
-            public double PriceMax { get; set; }
-            public int FirstBarIndex { get; set; }
-            public int LastBarIndex { get; set; }
-            public int TotalBuyBubbles { get; set; }
-            public int TotalSellBubbles { get; set; }
-            public int TotalBuyVolume { get; set; }
-            public int TotalSellVolume { get; set; }
-            public double BuyPercent { get; set; }
+            public string ZoneId          { get; set; }
+            public double CenterPrice     { get; set; }
+            public double PriceMin        { get; set; }
+            public double PriceMax        { get; set; }
+            public int FirstBarIndex      { get; set; }
+            public int LastBarIndex       { get; set; }
+            public int TotalBuyBubbles    { get; set; }
+            public int TotalSellBubbles   { get; set; }
+            public int TotalBuyVolume     { get; set; }
+            public int TotalSellVolume    { get; set; }
+            public double BuyPercent      { get; set; }
             public ClusterDominance Dominance { get; set; }
-            public bool IsVirgin { get; set; } = true;
+            public bool IsVirgin          { get; set; } = true;
         }
 
         private class SwingPoint
         {
-            public SwingType Type { get; set; }
-            public double Price { get; set; }
-            public int BarIndex { get; set; }
+            public SwingType Type  { get; set; }
+            public double Price    { get; set; }
+            public int BarIndex    { get; set; }
         }
 
         private class OrderBlock
         {
-            public int BarIndex { get; set; }
+            public int BarIndex     { get; set; }
             public double PriceHigh { get; set; }
-            public double PriceLow { get; set; }
-            public bool IsBullish { get; set; }
+            public double PriceLow  { get; set; }
+            public bool IsBullish   { get; set; }
             public bool IsMitigated { get; set; }
-            public int CreatedAt { get; set; }
+            public int CreatedAt    { get; set; }
         }
 
         private class FairValueGap
         {
-            public int BarIndex { get; set; }
+            public int BarIndex     { get; set; }
             public double PriceHigh { get; set; }
-            public double PriceLow { get; set; }
-            public bool IsBullish { get; set; }
-            public bool IsFilled { get; set; }
-            public int CreatedAt { get; set; }
+            public double PriceLow  { get; set; }
+            public bool IsBullish   { get; set; }
+            public bool IsFilled    { get; set; }
+            public int CreatedAt    { get; set; }
         }
     }
 }
