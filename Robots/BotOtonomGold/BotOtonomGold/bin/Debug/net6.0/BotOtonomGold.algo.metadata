@@ -390,8 +390,41 @@
       {
         "DefaultValue": true,
         "ParameterType": "Boolean",
-        "PropertyName": "UseOBTrailingStop",
-        "FriendlyName": "Use OB Trailing Stop",
+        "PropertyName": "UseMarkovATRTrailingStop",
+        "FriendlyName": "Use Markov-ATR Trailing Stop",
+        "GroupName": "Dynamic Risk",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 1,
+        "MaxValue": 100,
+        "Step": 1,
+        "DefaultValue": 14,
+        "ParameterType": "Integer",
+        "PropertyName": "AtrPeriod",
+        "FriendlyName": "ATR Period",
+        "GroupName": "Dynamic Risk",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 0.5,
+        "MaxValue": 5.0,
+        "Step": 0.1,
+        "DefaultValue": 1.5,
+        "ParameterType": "Double",
+        "PropertyName": "BaseAtrMultiplier",
+        "FriendlyName": "Base ATR Multiplier for SL",
+        "GroupName": "Dynamic Risk",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "ReverseOnSmcChOch",
+        "FriendlyName": "Reverse On SMC CHoCH/BOS",
         "GroupName": "Dynamic Risk",
         "IsValueVisibleInTitle": true,
         "Description": ""
@@ -441,15 +474,6 @@
         "PropertyName": "MarkovExitProbability",
         "FriendlyName": "Emergency Exit Prob (%)",
         "GroupName": "Markov Engine",
-        "IsValueVisibleInTitle": true,
-        "Description": ""
-      },
-      {
-        "DefaultValue": false,
-        "ParameterType": "Boolean",
-        "PropertyName": "ExportDataForML",
-        "FriendlyName": "Export Logic to CSV (For DDQN)",
-        "GroupName": "Machine Learning",
         "IsValueVisibleInTitle": true,
         "Description": ""
       },
@@ -514,14 +538,10 @@
         "Description": ""
       }
     ],
-    "Capabilities": [
-      {
-        "CapabilityType": "FullTrust"
-      }
-    ],
+    "Capabilities": [],
     "CustomAttributes": [],
     "Sets": [],
-    "AddIndicatorsToChart": true,
+    "AddIndicatorsToChart": false,
     "AdditionalInfoUrl": null,
     "Bars": []
   }

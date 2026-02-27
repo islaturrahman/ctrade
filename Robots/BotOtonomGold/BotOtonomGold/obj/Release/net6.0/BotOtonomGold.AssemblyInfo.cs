@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BotOtonomGold")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+99a75e507c20e80a01a9420dc41b6d83b47b9004")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b4281d78551ace24e3645efea4abcbc0096b5c81")]
 [assembly: System.Reflection.AssemblyProductAttribute("BotOtonomGold")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BotOtonomGold")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
