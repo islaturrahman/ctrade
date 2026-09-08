@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/publish/DendogramSMC.dll
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/publish/DendogramSMC.deps.json
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/publish/DendogramSMC.pdb
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/publish/cAlgo.API.dll

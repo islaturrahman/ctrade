@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Release/net6.0/publish/OptimizedDendrogram.dll
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Release/net6.0/publish/OptimizedDendrogram.deps.json
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Release/net6.0/publish/OptimizedDendrogram.pdb
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Release/net6.0/publish/cAlgo.API.dll

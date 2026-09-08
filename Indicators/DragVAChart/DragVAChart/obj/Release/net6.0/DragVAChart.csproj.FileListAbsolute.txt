@@ -25,3 +25,4 @@
 /var/folders/gz/5sg8g15x2lz3g1lktdnzby8c0000gn/T/dogixklt.kdw/DragVAChart.deps.json
 /var/folders/gz/5sg8g15x2lz3g1lktdnzby8c0000gn/T/dogixklt.kdw/DragVAChart.dll
 /var/folders/gz/5sg8g15x2lz3g1lktdnzby8c0000gn/T/dogixklt.kdw/DragVAChart.pdb
+/Users/macbook/cAlgo/Sources/Indicators/DragVAChart/DragVAChart/obj/Release/net6.0/DragVAChart.sourcelink.json

@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/bin/Debug/net6.0/Rsi_VolumeProfile.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/bin/Debug/net6.0/Rsi_VolumeProfile.dll
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/bin/Debug/net6.0/Rsi_VolumeProfile.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.sourcelink.json
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.dll
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/refint/Rsi_VolumeProfile.dll
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/Rsi_VolumeProfile.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Rsi_VolumeProfile/Rsi_VolumeProfile/obj/Debug/net6.0/ref/Rsi_VolumeProfile.dll

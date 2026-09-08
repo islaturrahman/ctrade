@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/DendogramSMC.deps.json
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/DendogramSMC.dll
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/bin/Release/net6.0/DendogramSMC.pdb
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.sourcelink.json
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.dll
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/refint/DendogramSMC.dll
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/DendogramSMC.pdb
+/Users/macbook/cAlgo/Sources/Robots/DendogramSMC/DendogramSMC/obj/Release/net6.0/ref/DendogramSMC.dll

@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/bin/Debug/net6.0/RsiVolBot_Robot.deps.json
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/bin/Debug/net6.0/RsiVolBot_Robot.dll
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/bin/Debug/net6.0/RsiVolBot_Robot.pdb
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.sourcelink.json
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.dll
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/refint/RsiVolBot_Robot.dll
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/RsiVolBot_Robot.pdb
+/Users/macbook/cAlgo/Sources/Robots/RsiVolBot/RsiVolBot_Robot/obj/Debug/net6.0/ref/RsiVolBot_Robot.dll

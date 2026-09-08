@@ -238,7 +238,7 @@
         "MinValue": 2.0,
         "MaxValue": 1000.0,
         "Step": 0.1,
-        "DefaultValue": 200.0,
+        "DefaultValue": 10.0,
         "ParameterType": "Double",
         "PropertyName": "OBMinImpulsePips",
         "FriendlyName": "OB Min Impulse (pips)",
@@ -534,6 +534,129 @@
         "PropertyName": "EqhEqlTolerancePips",
         "FriendlyName": "EQH/EQL Tolerance Pips",
         "GroupName": "Visual SMC LuxAlgo",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowVolumeProfile",
+        "FriendlyName": "Show Volume Profile",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 5,
+        "MaxValue": 500,
+        "Step": 1,
+        "DefaultValue": 100,
+        "ParameterType": "Integer",
+        "PropertyName": "VpLookback",
+        "FriendlyName": "VP Lookback (bars)",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 2,
+        "MaxValue": 100,
+        "Step": 1,
+        "DefaultValue": 15,
+        "ParameterType": "Integer",
+        "PropertyName": "VpWidthBars",
+        "FriendlyName": "VP Width (bars)",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 10,
+        "MaxValue": 100,
+        "Step": 1,
+        "DefaultValue": 30,
+        "ParameterType": "Integer",
+        "PropertyName": "VpBins",
+        "FriendlyName": "VP Number of Bins",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 0.1,
+        "MaxValue": 2.0,
+        "Step": 0.1,
+        "DefaultValue": 0.9,
+        "ParameterType": "Double",
+        "PropertyName": "VpHeightMultiplier",
+        "FriendlyName": "VP Bar Height Multiplier",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#006400FF",
+        "ParameterType": "Color",
+        "PropertyName": "VpBuyColor",
+        "FriendlyName": "VP Buy Color",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "#8B0000FF",
+        "ParameterType": "Color",
+        "PropertyName": "VpSellColor",
+        "FriendlyName": "VP Sell Color",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": false,
+        "Description": ""
+      },
+      {
+        "MinValue": 0,
+        "MaxValue": 255,
+        "Step": 1,
+        "DefaultValue": 100,
+        "ParameterType": "Integer",
+        "PropertyName": "VpOpacity",
+        "FriendlyName": "VP Opacity (0-255)",
+        "GroupName": "Volume Profile",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "UseVpFilters",
+        "FriendlyName": "Use VP Value Filters",
+        "GroupName": "Volume Profile Strategy",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "VpConfluenceBonus",
+        "FriendlyName": "VP Confluence Bonus",
+        "GroupName": "Volume Profile Strategy",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": false,
+        "ParameterType": "Boolean",
+        "PropertyName": "UsePocAsTp",
+        "FriendlyName": "Use POC as TakeProfit",
+        "GroupName": "Volume Profile Strategy",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "ShowValueAreaLines",
+        "FriendlyName": "Show Value Area Lines",
+        "GroupName": "Volume Profile Strategy",
         "IsValueVisibleInTitle": true,
         "Description": ""
       }

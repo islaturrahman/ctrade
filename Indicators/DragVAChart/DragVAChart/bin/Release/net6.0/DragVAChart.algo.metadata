@@ -60,19 +60,10 @@
         "MinValue": 0.1,
         "MaxValue": 1.7976931348623157E+308,
         "Step": 0.1,
-        "DefaultValue": 90.0,
+        "DefaultValue": 1.0,
         "ParameterType": "Double",
-        "PropertyName": "BucketSizePips",
-        "FriendlyName": "Bucket Size (pips)",
-        "GroupName": null,
-        "IsValueVisibleInTitle": true,
-        "Description": ""
-      },
-      {
-        "DefaultValue": true,
-        "ParameterType": "Boolean",
-        "PropertyName": "AutoBucketSize",
-        "FriendlyName": "Auto Bucket Size",
+        "PropertyName": "PipStep",
+        "FriendlyName": "Pip Step (Thickness)",
         "GroupName": null,
         "IsValueVisibleInTitle": true,
         "Description": ""

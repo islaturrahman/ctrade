@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.sourcelink.json
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Debug/net6.0/HftBot.deps.json
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Debug/net6.0/HftBot.dll
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Debug/net6.0/HftBot.pdb
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.dll
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/refint/HftBot.dll
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/HftBot.pdb
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/obj/Debug/net6.0/ref/HftBot.dll

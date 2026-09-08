@@ -52,6 +52,39 @@
         "Description": ""
       },
       {
+        "MinValue": 0.1,
+        "MaxValue": 1.7976931348623157E+308,
+        "Step": 0.1,
+        "DefaultValue": 1.0,
+        "ParameterType": "Double",
+        "PropertyName": "PipStep",
+        "FriendlyName": "Pip Step (Thickness)",
+        "GroupName": "Order Flow",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": true,
+        "ParameterType": "Boolean",
+        "PropertyName": "EnableVacuumDetection",
+        "FriendlyName": "Enable Vacuum/Spoofing Detection",
+        "GroupName": "Order Flow",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 0.5,
+        "MaxValue": 20.0,
+        "Step": 0.1,
+        "DefaultValue": 2.0,
+        "ParameterType": "Double",
+        "PropertyName": "VacuumMinPips",
+        "FriendlyName": "Vacuum Min Pips Jump",
+        "GroupName": "Order Flow",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
         "MinValue": 1,
         "MaxValue": 2147483647,
         "Step": 1,
@@ -517,6 +550,15 @@
         "ParameterType": "String",
         "PropertyName": "SellBubbleColor",
         "FriendlyName": "Sell Bubble Color",
+        "GroupName": "Visual",
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "Yellow",
+        "ParameterType": "String",
+        "PropertyName": "VacuumBubbleColor",
+        "FriendlyName": "Vacuum Bubble Color",
         "GroupName": "Visual",
         "IsValueVisibleInTitle": true,
         "Description": ""

@@ -51,11 +51,8 @@ namespace cAlgo.Indicators
         [Parameter("Histogram Width % of Area", DefaultValue = 8, MinValue = 3, MaxValue = 50, Step = 1)]
         public int HistogramWidthPercent { get; set; }
 
-        [Parameter("Bucket Size (pips)", DefaultValue = 90.0, MinValue = 0.1, Step = 0.1)]
-        public double BucketSizePips { get; set; }
-
-        [Parameter("Auto Bucket Size", DefaultValue = true)]
-        public bool AutoBucketSize { get; set; }
+        [Parameter("Pip Step (Thickness)", DefaultValue = 1.0, MinValue = 0.1, Step = 0.1)]
+        public double PipStep { get; set; }
 
         [Parameter("Show POC", DefaultValue = true)]
         public bool ShowPOC { get; set; }
@@ -145,6 +142,8 @@ namespace cAlgo.Indicators
         private DateTime _prevClickTime = DateTime.MinValue;
         private Color _crosshairColor;
 
+        private Ticks _ticks;
+
         // ═══════════════════════════════════════
         //  INITIALIZATION
         // ═══════════════════════════════════════
@@ -156,6 +155,8 @@ namespace cAlgo.Indicators
             _sellColor = SellColor;
             _pocColor = POCColor;
             _crosshairColor = Color.FromArgb(CrosshairOpacity, CrosshairColor.R, CrosshairColor.G, CrosshairColor.B);
+            
+            _ticks = MarketData.GetTicks();
 
             // CLEAN ALL OLD VP OBJECTS ON RELOAD
             CleanAllVPObjects();
@@ -315,8 +316,8 @@ namespace cAlgo.Indicators
                     rectName,
                     _click1Time, _click1Price,
                     args.TimeValue, args.YValue,
-                    Color.FromArgb(25, 100, 180, 255));
-                vpRect.IsFilled = true;
+                    Color.FromArgb(255, 100, 180, 255));
+                vpRect.IsFilled = false;
                 vpRect.IsInteractive = true;
                 vpRect.LineStyle = LineStyle.Dots;
                 vpRect.Thickness = 1;
@@ -327,7 +328,9 @@ namespace cAlgo.Indicators
                 // Render Volume Profile
                 RenderVolumeProfile(vpRect);
 
-                UpdateStatusText("✅ VP dibuat! Klik lagi utk area baru | Double-click utk OFF", Color.Lime);
+                // Auto turn-off Click Mode after container is drawn
+                _crosshairActive = false;
+                UpdateStatusText("✅ VP dibuat! Double-click untuk menggambar VP baru", Color.Lime);
             }
         }
 
@@ -380,8 +383,8 @@ namespace cAlgo.Indicators
                 rectName,
                 Bars.OpenTimes[startIndex], topPrice,
                 Bars.OpenTimes[endIndex], bottomPrice,
-                Color.FromArgb(12, 100, 150, 255));
-            autoRect.IsFilled = true;
+                Color.FromArgb(255, 100, 150, 255));
+            autoRect.IsFilled = false;
             autoRect.IsInteractive = false;
             autoRect.LineStyle = LineStyle.Dots;
             autoRect.Thickness = 1;
@@ -403,6 +406,11 @@ namespace cAlgo.Indicators
 
         private void OnObjectsUpdated(ChartObjectsUpdatedEventArgs args)
         {
+            // IMPORTANT: Only trigger if the user actually dragged an interactive container!
+            // This prevents an infinite loop where the script's own drawing triggers updates.
+            bool isUserContainerUpdated = args.ChartObjects.Any(o => o.IsInteractive && (o.Name.StartsWith(VP_RECT_PREFIX) || !o.Name.StartsWith("VP_")));
+            if (!isUserContainerUpdated) return;
+
             Print("Objects Updated (drag/resize detected).");
 
             if (SelectionMode == VPSelectionMode.Click)
@@ -450,16 +458,17 @@ namespace cAlgo.Indicators
                 if ((now - _lastRenderTime).TotalMilliseconds < 500) return;
                 _lastRenderTime = now;
 
-                // Clean and re-render auto VP on new bars
-                RemoveVPForRect(VP_RECT_PREFIX + "auto");
-                Chart.RemoveObject(VP_RECT_PREFIX + "auto");
+                // Re-render auto VP on new bars (Smart update prevents flickering)
                 RenderAutoVP();
             }
             else if (SelectionMode == VPSelectionMode.Rectangle)
             {
                 ProcessRectangles();
             }
-            // Click mode: no action on Calculate
+            else if (SelectionMode == VPSelectionMode.Click)
+            {
+                ProcessClickRectangles();
+            }
         }
 
         // ═══════════════════════════════════════
@@ -480,8 +489,7 @@ namespace cAlgo.Indicators
 
             foreach (var rect in vpRects)
             {
-                // Clean old VP for this rect, then re-render
-                RemoveVPForRect(rect.Name);
+                // Re-render (Smart update)
                 RenderVolumeProfile(rect);
             }
         }
@@ -622,36 +630,44 @@ namespace cAlgo.Indicators
             int startIndex = Bars.OpenTimes.GetIndexByTime(startTime);
             int endIndex = Bars.OpenTimes.GetIndexByTime(endTime);
 
+            // Auto-extend live area: If rectangle's right edge is at/near the current bar, keep tracking live bar
+            if (endIndex >= Bars.Count - 2 || (rect.Time2 >= rect.Time1 ? rect.Time2 : rect.Time1) >= Bars.OpenTimes.LastValue)
+            {
+                endIndex = Bars.Count - 1;
+                if (rect.Time2 >= rect.Time1)
+                    rect.Time2 = Bars.OpenTimes[endIndex];
+                else
+                    rect.Time1 = Bars.OpenTimes[endIndex];
+            }
+
             if (startIndex < 0 || endIndex < 0 || startIndex > endIndex) return;
 
-            // DYNAMIC BUCKET SIZE — smooth, small bars
-            double bucketSize;
+            // SMART UPDATE: Collect all existing VP object names for this rect
+            // We will only remove the ones that are no longer needed
+            var existingNames = Chart.Objects
+                .Where(o => o.Name.StartsWith("VP_") && o.Name.Contains(rect.Name))
+                .Select(o => o.Name)
+                .ToHashSet();
+
             double priceRange = topPrice - bottomPrice;
-            if (AutoBucketSize)
+            // Use exact Pip Step multiplier for precise histogram thickness
+            double bucketSize = PipStep * _pipSize;
+            
+            // Safety fallback for extreme zoom-outs to prevent cTrader from crashing
+            if (priceRange / bucketSize > 1000)
             {
-                // Target: ~70 buckets for smooth, compact histogram
-                int targetBuckets = 70;
-                bucketSize = priceRange / targetBuckets;
-
-                // Snap to multiples of pipSize (fine granularity)
-                double bucketPips = bucketSize / _pipSize;
-                if (bucketPips < 0.2) bucketPips = 0.2;
-                else if (bucketPips < 0.5) bucketPips = 0.5;
-                else if (bucketPips < 1) bucketPips = Math.Round(bucketPips * 2) / 2; // 0.5 steps
-                else bucketPips = Math.Ceiling(bucketPips);
-
-                bucketSize = bucketPips * _pipSize;
-                Print($"Auto Bucket: {bucketPips:F1} pips | Range: {(priceRange / _pipSize):F1} pips | Buckets: ~{(int)(priceRange / bucketSize)}");
-            }
-            else
-            {
-                bucketSize = BucketSizePips * _pipSize;
+                bucketSize = Math.Round((priceRange / 1000) / _pipSize) * _pipSize;
+                Print($"Warning: Pip Step is too small for this huge area. Auto-adjusting to {(bucketSize/_pipSize):F1} pips.");
             }
 
             var volumeDict = new Dictionary<double, VolumeSplit>();
 
+            // Calculate precise tick times to include the ENTIRE duration of the last bar selected
+            DateTime tickStartTime = Bars.OpenTimes[startIndex];
+            DateTime tickEndTime = (endIndex < Bars.Count - 1) ? Bars.OpenTimes[endIndex + 1] : Server.Time;
+
             if (UseTickData)
-                CalculateVolumeFromTicks(volumeDict, startTime, endTime, topPrice, bottomPrice, bucketSize);
+                CalculateVolumeFromTicks(volumeDict, tickStartTime, tickEndTime, topPrice, bottomPrice, bucketSize);
             else
                 CalculateVolumeFromBars(volumeDict, startIndex, endIndex, topPrice, bottomPrice, bucketSize);
 
@@ -693,20 +709,26 @@ namespace cAlgo.Indicators
                 else break;
             }
 
-            // RENDER HISTOGRAM using ChartRectangle for gap-free smooth bars
+            // STANDARDIZED BAR DURATION: Prevent horizontal stretching across weekend gaps
+            TimeSpan barDuration = TimeSpan.MaxValue;
+            int lookback = Math.Min(10, Bars.Count);
+            for (int j = Bars.Count - 1; j > Bars.Count - lookback; j--)
+            {
+                TimeSpan diff = Bars.OpenTimes[j] - Bars.OpenTimes[j - 1];
+                if (diff < barDuration && diff.TotalSeconds > 0)
+                    barDuration = diff;
+            }
+            if (barDuration == TimeSpan.MaxValue) barDuration = TimeSpan.FromMinutes(1);
+
+            // RENDER HISTOGRAM using exact Time coordinates for pixel-perfect smooth bars (No integer snapping)
             int leftAnchorIndex = Bars.OpenTimes.GetIndexByTime(rect.Time1);
             int rightAnchorIndex = Bars.OpenTimes.GetIndexByTime(rect.Time2);
 
             int rectWidthInBars = Math.Max(15, rightAnchorIndex - leftAnchorIndex);
 
             double widthRatio = HistogramWidthPercent / 100.0;
-            int histogramMaxWidth = (int)(rectWidthInBars * widthRatio);
-            histogramMaxWidth = Math.Max(15, histogramMaxWidth);
-            histogramMaxWidth = Math.Min(histogramMaxWidth, rectWidthInBars - 5);
+            TimeSpan maxHistogramTimeWidth = TimeSpan.FromTicks((long)(barDuration.Ticks * rectWidthInBars * widthRatio));
 
-            int leftStart = leftAnchorIndex;
-
-            // Determine bar drawing times for precise positioning
             DateTime leftTime = rect.Time1 < rect.Time2 ? rect.Time1 : rect.Time2;
 
             foreach (var kv in sortedBuckets)
@@ -747,20 +769,22 @@ namespace cAlgo.Indicators
                     widthMultiplier = 0.85;
                 }
 
-                int totalWidth = Math.Max(2, (int)(volRatio * histogramMaxWidth * widthMultiplier));
-                int buyWidth = Math.Max(1, (int)(totalWidth * buyRatio));
-                int sellWidth = Math.Max(1, (int)(totalWidth * sellRatio));
+                TimeSpan totalWidthTime = TimeSpan.FromTicks((long)(maxHistogramTimeWidth.Ticks * volRatio * widthMultiplier));
+                TimeSpan buyWidthTime = TimeSpan.FromTicks((long)(totalWidthTime.Ticks * buyRatio));
+                TimeSpan sellWidthTime = TimeSpan.FromTicks((long)(totalWidthTime.Ticks * sellRatio));
 
                 Color buyColor = Color.FromArgb(buyOpacity, _buyColor.R, _buyColor.G, _buyColor.B);
                 Color sellColor = Color.FromArgb(sellOpacity, _sellColor.R, _sellColor.G, _sellColor.B);
 
                 // ── DRAW BUY BAR (right side from left edge) ──
-                if (buyWidth > 0)
+                if (buyWidthTime.TotalSeconds > 0)
                 {
                     string buyBarName = "VP_buy_" + bucketBottom.ToString("F5") + "_" + rect.Name;
+                    existingNames.Remove(buyBarName);
+                    
                     var buyRect = Chart.DrawRectangle(buyBarName,
-                        leftStart, bucketBottom,
-                        leftStart + buyWidth, bucketTop,
+                        leftTime, bucketBottom,
+                        leftTime + buyWidthTime, bucketTop,
                         buyColor);
                     buyRect.IsFilled = true;
                     buyRect.IsInteractive = false;
@@ -769,12 +793,14 @@ namespace cAlgo.Indicators
                 }
 
                 // ── DRAW SELL BAR (overlaid, slightly offset or same position) ──
-                if (sellWidth > 0)
+                if (sellWidthTime.TotalSeconds > 0)
                 {
                     string sellBarName = "VP_sell_" + bucketBottom.ToString("F5") + "_" + rect.Name;
+                    existingNames.Remove(sellBarName);
+                    
                     var sellRect = Chart.DrawRectangle(sellBarName,
-                        leftStart + buyWidth, bucketBottom,
-                        leftStart + buyWidth + sellWidth, bucketTop,
+                        leftTime + buyWidthTime, bucketBottom,
+                        leftTime + buyWidthTime + sellWidthTime, bucketTop,
                         sellColor);
                     sellRect.IsFilled = true;
                     sellRect.IsInteractive = false;
@@ -787,9 +813,12 @@ namespace cAlgo.Indicators
             if (ShowPOC)
             {
                 string pocName = "VP_POC_" + rect.Name;
+                existingNames.Remove(pocName + "_line");
+                existingNames.Remove(pocName + "_label");
+                
                 Chart.DrawTrendLine(pocName + "_line",
-                    leftAnchorIndex, pocPrice + bucketSize * 0.5,
-                    rightAnchorIndex, pocPrice + bucketSize * 0.5,
+                    rect.Time1, pocPrice + bucketSize * 0.5,
+                    rect.Time2, pocPrice + bucketSize * 0.5,
                     _pocColor, 3, LineStyle.Solid);
                 Chart.DrawText(pocName + "_label",
                     "◄ POC (" + (pocPrice + bucketSize * 0.5).ToString("F" + Symbol.Digits) + ")",
@@ -800,6 +829,10 @@ namespace cAlgo.Indicators
             if (ShowValueArea)
             {
                 string vaName = "VP_VA_" + rect.Name;
+                existingNames.Remove(vaName + "_VAH_line");
+                existingNames.Remove(vaName + "_VAH_label");
+                existingNames.Remove(vaName + "_VAL_line");
+                existingNames.Remove(vaName + "_VAL_label");
 
                 Chart.DrawTrendLine(vaName + "_VAH_line",
                     leftAnchorIndex, vaHigh + bucketSize,
@@ -810,8 +843,8 @@ namespace cAlgo.Indicators
                     rightAnchorIndex + 2, vaHigh + bucketSize, Color.Cyan);
 
                 Chart.DrawTrendLine(vaName + "_VAL_line",
-                    leftAnchorIndex, vaLow,
-                    rightAnchorIndex, vaLow,
+                    rect.Time1, vaLow,
+                    rect.Time2, vaLow,
                     Color.Cyan, 2, LineStyle.DotsRare);
                 Chart.DrawText(vaName + "_VAL_label",
                     "◄ VAL (" + vaLow.ToString("F" + Symbol.Digits) + ")",
@@ -819,9 +852,10 @@ namespace cAlgo.Indicators
 
                 // Value Area shading (subtle background)
                 string vaShade = "VP_VA_shade_" + rect.Name;
+                existingNames.Remove(vaShade);
                 var vaRect = Chart.DrawRectangle(vaShade,
-                    leftAnchorIndex, vaLow,
-                    rightAnchorIndex, vaHigh + bucketSize,
+                    rect.Time1, vaLow,
+                    rect.Time2, vaHigh + bucketSize,
                     Color.FromArgb(15, 0, 200, 255));
                 vaRect.IsFilled = true;
                 vaRect.IsInteractive = false;
@@ -833,7 +867,13 @@ namespace cAlgo.Indicators
             // CUMULATIVE DELTA
             if (ShowCumulativeDelta)
             {
-                RenderCumulativeDelta(rect, startIndex, endIndex, leftAnchorIndex, rectWidthInBars, topPrice, bottomPrice, bucketSize);
+                RenderCumulativeDelta(rect, startIndex, endIndex, leftAnchorIndex, rectWidthInBars, topPrice, bottomPrice, bucketSize, barDuration, existingNames);
+            }
+
+            // CLEAN ORPHANED OBJECTS (Objects that were not updated in this pass)
+            foreach (var oldName in existingNames)
+            {
+                Chart.RemoveObject(oldName);
             }
         }
 
@@ -841,7 +881,7 @@ namespace cAlgo.Indicators
         //  CUMULATIVE DELTA RENDERING
         // ═══════════════════════════════════════
 
-        private void RenderCumulativeDelta(ChartRectangle rect, int startIndex, int endIndex, int leftAnchorIndex, int rectWidthInBars, double topPrice, double bottomPrice, double bucketSize)
+        private void RenderCumulativeDelta(ChartRectangle rect, int startIndex, int endIndex, int leftAnchorIndex, int rectWidthInBars, double topPrice, double bottomPrice, double bucketSize, TimeSpan barDuration, HashSet<string> existingNames)
         {
             var deltaByPrice = new Dictionary<double, double>();
 
@@ -914,10 +954,8 @@ namespace cAlgo.Indicators
             if (maxAbsDelta == 0) return;
 
             double widthRatio = CumulativeDeltaWidthPercent / 100.0;
-            int maxDeltaWidth = (int)(rectWidthInBars * widthRatio);
-            maxDeltaWidth = Math.Max(15, maxDeltaWidth);
-
-            int deltaRightEdge = leftAnchorIndex;
+            TimeSpan maxDeltaTimeWidth = TimeSpan.FromTicks((long)(barDuration.Ticks * rectWidthInBars * widthRatio));
+            DateTime rightTime = rect.Time1 < rect.Time2 ? rect.Time1 : rect.Time2;
 
             var sortedDelta = deltaByPrice.OrderBy(kv => kv.Key).ToList();
 
@@ -928,7 +966,7 @@ namespace cAlgo.Indicators
                 double cumulativeDelta = kv.Value;
 
                 double deltaRatio = cumulativeDelta / maxAbsDelta;
-                int barWidth = Math.Max(2, (int)(Math.Abs(deltaRatio) * maxDeltaWidth));
+                TimeSpan barWidthTime = TimeSpan.FromTicks((long)(maxDeltaTimeWidth.Ticks * Math.Abs(deltaRatio)));
 
                 Color barColor;
                 int alpha = (int)(DeltaOpacity * Math.Min(1.0, Math.Abs(deltaRatio) * 1.3 + 0.3));
@@ -939,11 +977,13 @@ namespace cAlgo.Indicators
                 else
                     barColor = Color.FromArgb(alpha, NegativeDeltaColor.R, NegativeDeltaColor.G, NegativeDeltaColor.B);
 
-                // Draw delta bar as rectangle (gap-free, extends LEFT from rect edge)
+                // Draw delta bar as rectangle (exact time mapping)
                 string deltaBarName = "VP_delta_" + bucketBottom.ToString("F5") + "_" + rect.Name;
+                existingNames.Remove(deltaBarName);
+                
                 var deltaRect = Chart.DrawRectangle(deltaBarName,
-                    deltaRightEdge - barWidth, bucketBottom,
-                    deltaRightEdge, bucketTop,
+                    rightTime - barWidthTime, bucketBottom,
+                    rightTime, bucketTop,
                     barColor);
                 deltaRect.IsFilled = true;
                 deltaRect.IsInteractive = false;
@@ -1037,36 +1077,35 @@ namespace cAlgo.Indicators
         {
             try
             {
-                var ticks = MarketData.GetTicks();
-
-                if (ticks == null || ticks.Count == 0)
+                if (_ticks == null || _ticks.Count == 0)
                 {
                     Print("No tick data available, falling back to bar analysis.");
-                    int startIndex = Bars.OpenTimes.GetIndexByTime(startTime);
-                    int endIndex = Bars.OpenTimes.GetIndexByTime(endTime);
-                    CalculateVolumeFromBars(volumeDict, startIndex, endIndex, topPrice, bottomPrice, bucketSize);
+                    FallbackToBars(volumeDict, startTime, endTime, topPrice, bottomPrice, bucketSize);
                     return;
                 }
-
-                var filteredTicks = ticks.Where(t => t.Time >= startTime && t.Time <= endTime).ToList();
-
-                if (filteredTicks.Count == 0)
+                
+                int startIndex = GetTickIndexByTime(startTime);
+                int endIndex = GetTickIndexByTime(endTime);
+                
+                if (startIndex == -1 || endIndex == -1 || startIndex > endIndex)
                 {
                     Print("No ticks in selected time range, falling back to bar analysis.");
-                    int startIndex = Bars.OpenTimes.GetIndexByTime(startTime);
-                    int endIndex = Bars.OpenTimes.GetIndexByTime(endTime);
-                    CalculateVolumeFromBars(volumeDict, startIndex, endIndex, topPrice, bottomPrice, bucketSize);
+                    FallbackToBars(volumeDict, startTime, endTime, topPrice, bottomPrice, bucketSize);
                     return;
                 }
 
-                Print($"Processing {filteredTicks.Count} ticks...");
+                Print($"Processing {endIndex - startIndex + 1} ticks (Binary Search)...");
 
-                Tick? previousTick = null;
+                Tick? previousTick = startIndex > 0 ? _ticks[startIndex - 1] : (Tick?)null;
 
-                foreach (var tick in filteredTicks)
+                for (int i = startIndex; i <= endIndex; i++)
                 {
+                    var tick = _ticks[i];
                     if (tick.Bid < bottomPrice || tick.Bid > topPrice)
+                    {
+                        previousTick = tick;
                         continue;
+                    }
 
                     double price = (tick.Bid + tick.Ask) / 2.0;
                     double bucket = Math.Floor(price / bucketSize) * bucketSize;
@@ -1100,10 +1139,46 @@ namespace cAlgo.Indicators
             catch (Exception ex)
             {
                 Print("Error in tick analysis: " + ex.Message + " - Falling back to bar analysis");
-                int startIndex = Bars.OpenTimes.GetIndexByTime(startTime);
-                int endIndex = Bars.OpenTimes.GetIndexByTime(endTime);
-                CalculateVolumeFromBars(volumeDict, startIndex, endIndex, topPrice, bottomPrice, bucketSize);
+                FallbackToBars(volumeDict, startTime, endTime, topPrice, bottomPrice, bucketSize);
             }
+        }
+        
+        private void FallbackToBars(Dictionary<double, VolumeSplit> volumeDict, DateTime startTime, DateTime endTime, double topPrice, double bottomPrice, double bucketSize)
+        {
+            int startIndex = Bars.OpenTimes.GetIndexByTime(startTime);
+            int endIndex = Bars.OpenTimes.GetIndexByTime(endTime);
+            CalculateVolumeFromBars(volumeDict, startIndex, endIndex, topPrice, bottomPrice, bucketSize);
+        }
+        
+        private int GetTickIndexByTime(DateTime time)
+        {
+            if (_ticks == null || _ticks.Count == 0) return -1;
+            
+            int left = 0;
+            int right = _ticks.Count - 1;
+            int bestMatch = -1;
+            
+            if (time < _ticks[0].Time) return 0;
+            if (time > _ticks[_ticks.Count - 1].Time) return _ticks.Count - 1;
+            
+            while (left <= right)
+            {
+                int mid = left + (right - left) / 2;
+                if (_ticks[mid].Time < time)
+                {
+                    bestMatch = mid;
+                    left = mid + 1;
+                }
+                else if (_ticks[mid].Time > time)
+                {
+                    right = mid - 1;
+                }
+                else return mid;
+            }
+            // If exact time not found, return the closest tick after 'time' (which is 'left' or 'bestMatch' + 1)
+            int index = bestMatch + 1;
+            if (index >= _ticks.Count) index = _ticks.Count - 1;
+            return index;
         }
     }
 

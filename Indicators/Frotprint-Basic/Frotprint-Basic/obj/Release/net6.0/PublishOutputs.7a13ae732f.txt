@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/publish/Frotprint-Basic.dll
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/publish/Frotprint-Basic.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/publish/Frotprint-Basic.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/publish/cAlgo.API.dll

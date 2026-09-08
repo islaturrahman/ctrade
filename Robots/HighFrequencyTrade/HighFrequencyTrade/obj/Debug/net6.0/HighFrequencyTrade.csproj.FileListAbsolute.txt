@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Debug/net6.0/HighFrequencyTrade.deps.json
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Debug/net6.0/HighFrequencyTrade.dll
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Debug/net6.0/HighFrequencyTrade.pdb
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.sourcelink.json
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.dll
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/refint/HighFrequencyTrade.dll
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/HighFrequencyTrade.pdb
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/obj/Debug/net6.0/ref/HighFrequencyTrade.dll

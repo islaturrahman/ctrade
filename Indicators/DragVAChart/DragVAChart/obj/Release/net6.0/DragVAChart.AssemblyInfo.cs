@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DragVAChart")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34605a8cf538f2db394eb90b134cea770de8825d")]
 [assembly: System.Reflection.AssemblyProductAttribute("DragVAChart")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DragVAChart")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

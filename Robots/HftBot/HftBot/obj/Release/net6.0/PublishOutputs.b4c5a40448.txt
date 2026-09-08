@@ -1,0 +1,4 @@
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Release/net6.0/publish/HftBot.dll
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Release/net6.0/publish/HftBot.deps.json
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Release/net6.0/publish/HftBot.pdb
+/Users/macbook/cAlgo/Sources/Robots/HftBot/HftBot/bin/Release/net6.0/publish/cAlgo.API.dll

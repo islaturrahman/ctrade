@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Debug/net6.0/OptimizedDendrogram.deps.json
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Debug/net6.0/OptimizedDendrogram.dll
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/bin/Debug/net6.0/OptimizedDendrogram.pdb
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.sourcelink.json
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.dll
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/refint/OptimizedDendrogram.dll
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/OptimizedDendrogram.pdb
+/Users/macbook/cAlgo/Sources/Robots/OptimizedDendrogram/OptimizedDendrogram/obj/Debug/net6.0/ref/OptimizedDendrogram.dll

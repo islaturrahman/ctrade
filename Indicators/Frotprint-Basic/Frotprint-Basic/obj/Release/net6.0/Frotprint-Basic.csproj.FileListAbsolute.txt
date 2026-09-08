@@ -1,0 +1,13 @@
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.csproj.AssemblyReference.cache
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.GeneratedMSBuildEditorConfig.editorconfig
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.AssemblyInfoInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.AssemblyInfo.cs
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.csproj.CoreCompileInputs.cache
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.sourcelink.json
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/Frotprint-Basic.deps.json
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/Frotprint-Basic.dll
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/bin/Release/net6.0/Frotprint-Basic.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.dll
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/refint/Frotprint-Basic.dll
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/Frotprint-Basic.pdb
+/Users/macbook/cAlgo/Sources/Indicators/Frotprint-Basic/Frotprint-Basic/obj/Release/net6.0/ref/Frotprint-Basic.dll

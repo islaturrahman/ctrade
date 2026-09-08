@@ -1,0 +1,5 @@
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Release/net6.0/publish/HighFrequencyTrade.dll
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Release/net6.0/publish/HighFrequencyTrade.deps.json
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Release/net6.0/publish/HighFrequencyTrade.pdb
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Release/net6.0/publish/cAlgo.API.dll
+/Users/macbook/cAlgo/Sources/Robots/HighFrequencyTrade/HighFrequencyTrade/bin/Release/net6.0/publish/Python.Runtime.dll

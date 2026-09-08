@@ -23,6 +23,15 @@ namespace cAlgo.Robots
         [Parameter("Min Volume Per Level", Group = "Order Flow", DefaultValue = 1, MinValue = 1)]
         public int MinVolumePerLevel { get; set; }
 
+        [Parameter("Pip Step (Thickness)", Group = "Order Flow", DefaultValue = 1.0, MinValue = 0.1, Step = 0.1)]
+        public double PipStep { get; set; }
+
+        [Parameter("Enable Vacuum/Spoofing Detection", Group = "Order Flow", DefaultValue = true)]
+        public bool EnableVacuumDetection { get; set; }
+
+        [Parameter("Vacuum Min Pips Jump", Group = "Order Flow", DefaultValue = 2.0, MinValue = 0.5, MaxValue = 20.0)]
+        public double VacuumMinPips { get; set; }
+
         [Parameter("Min Bubbles for Signal", Group = "Order Flow", DefaultValue = 2, MinValue = 1)]
         public int MinBubblesForSignal { get; set; }
 
@@ -183,6 +192,9 @@ namespace cAlgo.Robots
 
         [Parameter("Sell Bubble Color", Group = "Visual", DefaultValue = "Red")]
         public string SellBubbleColor { get; set; }
+
+        [Parameter("Vacuum Bubble Color", Group = "Visual", DefaultValue = "Yellow")]
+        public string VacuumBubbleColor { get; set; }
 
         [Parameter("Bubble Size Multiplier", Group = "Visual", DefaultValue = 0.8, MinValue = 0.01, MaxValue = 2.0)]
         public double BubbleSizeMultiplier { get; set; }
@@ -371,20 +383,28 @@ namespace cAlgo.Robots
             bool isBuyTick = false;
             bool isSellTick = false;
 
+            double midLast = footprint.LastAsk > 0 ? (footprint.LastBid + footprint.LastAsk) / 2.0 : 0;
+            double midNow = (tick.Bid + tick.Ask) / 2.0;
+
             if (footprint.LastAsk > 0 && tick.Ask > footprint.LastAsk)
                 isBuyTick = true;
             else if (footprint.LastBid > 0 && tick.Bid < footprint.LastBid)
                 isSellTick = true;
-            else if (footprint.LastAsk > 0)
+            else if (midLast > 0)
             {
-                double midLast = (footprint.LastBid + footprint.LastAsk) / 2.0;
-                double midNow = (tick.Bid + tick.Ask) / 2.0;
-
                 if (midNow > midLast) isBuyTick = true;
                 else if (midNow < midLast) isSellTick = true;
             }
 
             double price = isBuyTick ? tick.Ask : tick.Bid;
+            double barHigh = Bars.HighPrices[barIndex];
+            double barLow = Bars.LowPrices[barIndex];
+
+            // Strict clamp check: exclude ticks outside current bar boundaries (+/- 0.5 pip tolerance for spread)
+            double tolerance = Symbol.PipSize * 0.5;
+            if (price > barHigh + tolerance || price < barLow - tolerance)
+                return;
+
             double roundedPrice = RoundToPip(price);
 
             if (!footprint.PriceLevels.ContainsKey(roundedPrice))
@@ -401,6 +421,17 @@ namespace cAlgo.Robots
             {
                 level.SellCount++;
                 footprint.TotalSellCount++;
+            }
+
+            // Liquidity Vacuum / Spoofing Check: Sudden price displacement on small tick volume
+            if (midLast > 0)
+            {
+                double priceJumpPips = Math.Abs(midNow - midLast) / Symbol.PipSize;
+                if (EnableVacuumDetection && priceJumpPips >= VacuumMinPips)
+                {
+                    level.IsVacuumSpoof = true;
+                    level.PriceImpact = priceJumpPips / Math.Max(1, level.TotalCount);
+                }
             }
 
             level.TotalCount++;
@@ -1193,6 +1224,38 @@ namespace cAlgo.Robots
             }
 
             // ─────────────────────────────────────────
+            // 7. LIQUIDITY VACUUM / SPOOFING IMPULSE
+            // ─────────────────────────────────────────
+            if (string.IsNullOrEmpty(signal) && EnableVacuumDetection)
+            {
+                int vacuumCount = footprint.PriceLevels.Values.Count(l => l.IsVacuumSpoof);
+                if (vacuumCount >= 1)
+                {
+                    double open = Bars.OpenPrices[footprint.BarIndex];
+                    double close = Bars.ClosePrices[footprint.BarIndex];
+
+                    if (close > open)
+                    {
+                        signal = "VAC↑";
+                        signalColorName = "Yellow";
+                        direction = TradeType.Buy;
+                        signalType = "VACUUM_BUY";
+                        clusterConfirmed = true;
+                        Print($"⚡ LIQUIDITY VACUUM / SPOOFING BUY: Price swept {vacuumCount} thin levels!");
+                    }
+                    else if (close < open)
+                    {
+                        signal = "VAC↓";
+                        signalColorName = "Yellow";
+                        direction = TradeType.Sell;
+                        signalType = "VACUUM_SELL";
+                        clusterConfirmed = true;
+                        Print($"⚡ LIQUIDITY VACUUM / SPOOFING SELL: Price swept {vacuumCount} thin levels!");
+                    }
+                }
+            }
+
+            // ─────────────────────────────────────────
             // SKIP: Consolidated zone (perang volume)
             // ─────────────────────────────────────────
             if (!string.IsNullOrEmpty(signal) && clusterResult.IsValid && clusterResult.Dominance == ClusterDominance.Consolidated)
@@ -1605,67 +1668,60 @@ namespace cAlgo.Robots
 
         private void DrawFootprintBubble(int barIndex, PriceLevel level, int delta, bool isBuy)
         {
-            int absDelta = Math.Abs(delta);
+            // Absolute Delta: |V_buy - V_sell|
+            int absDelta = Math.Abs(level.BuyCount - level.SellCount);
 
-            Color baseColor = isBuy ? GetColorFromString(BuyBubbleColor) : GetColorFromString(SellBubbleColor);
+            Color baseColor;
+            if (level.IsVacuumSpoof)
+                baseColor = GetColorFromString(VacuumBubbleColor);
+            else
+                baseColor = isBuy ? GetColorFromString(BuyBubbleColor) : GetColorFromString(SellBubbleColor);
+
             Color color = Color.FromArgb(BubbleOpacity, baseColor.R, baseColor.G, baseColor.B);
 
             double candleHigh = Bars.HighPrices[barIndex];
             double candleLow = Bars.LowPrices[barIndex];
-            double candleRange = candleHigh - candleLow;
 
-            double bubbleSizePercent;
+            double priceStep = Symbol.PipSize * (PipStep > 0 ? PipStep : 1.0);
+            double bubbleCenterY = level.Price + (priceStep / 2.0);
 
-            if (absDelta <= 5) bubbleSizePercent = 0.05 + (absDelta / 5.0) * 0.15;
-            else if (absDelta <= 10) bubbleSizePercent = 0.20 + ((absDelta - 5) / 5.0) * 0.30;
-            else if (absDelta <= 15) bubbleSizePercent = 0.50 + ((absDelta - 10) / 5.0) * 0.30;
-            else if (absDelta <= 20) bubbleSizePercent = 0.80 + ((absDelta - 15) / 5.0) * 0.40;
-            else
-            {
-                double excess = Math.Min(10, absDelta - 20);
-                bubbleSizePercent = 1.20 + (excess / 10.0) * 0.60;
-            }
+            // Strict Boundary Check: Skip if bubble level is completely outside candle High/Low range
+            if (level.Price > candleHigh + (priceStep * 0.5) || level.Price < candleLow - (priceStep * 0.5))
+                return;
 
-            bubbleSizePercent *= BubbleSizeMultiplier;
-            bubbleSizePercent = Math.Min(1.8, bubbleSizePercent);
+            // Clamp center Y strictly inside candle range
+            bubbleCenterY = Math.Min(candleHigh, Math.Max(candleLow, bubbleCenterY));
 
-            if (level.TotalCount > 30)
-            {
-                double volumeBoost = Math.Min(0.10, (level.TotalCount - 30) / 400.0);
-                bubbleSizePercent *= (1.0 + volumeBoost);
-            }
+            // Smooth Non-Linear Tanh Scaling based on Absolute Delta
+            // Baseline reference is 2x MinDeltaPerLevel
+            double baselineDelta = Math.Max(1.0, MinDeltaPerLevel * 2.0);
+            double deltaRatio = absDelta / baselineDelta;
+            
+            // Tanh scaling smoothly maps small to high delta without exploding in size
+            double sizeScale = 0.50 + 0.80 * Math.Tanh(deltaRatio * 0.5);
+            sizeScale *= BubbleSizeMultiplier;
 
-            double bubbleRadius = candleRange * bubbleSizePercent;
-
-            double minRadius;
-            if (Symbol.PipSize >= 0.1) minRadius = candleRange * 0.005;
-            else minRadius = Symbol.PipSize * 2;
-
-            if (bubbleRadius < minRadius) bubbleRadius = minRadius;
+            // Vertical Radius: Scaled relative to PipStep height so bubble stays on its price level
+            double verticalRadius = (priceStep / 2.0) * Math.Min(1.25, Math.Max(0.55, sizeScale));
+            double topY = Math.Min(candleHigh, bubbleCenterY + verticalRadius);
+            double bottomY = Math.Max(candleLow, bubbleCenterY - verticalRadius);
 
             DateTime barTime = Bars.OpenTimes[barIndex];
             TimeSpan barDuration = barIndex > 0
                 ? Bars.OpenTimes[barIndex] - Bars.OpenTimes[barIndex - 1]
                 : TimeSpan.FromMinutes(1);
 
-            double widthFraction;
-            if (bubbleSizePercent <= 0.20) widthFraction = 0.30;
-            else if (bubbleSizePercent <= 0.40) widthFraction = 0.50;
-            else if (bubbleSizePercent <= 0.60) widthFraction = 0.75;
-            else if (bubbleSizePercent <= 0.80) widthFraction = 1.00;
-            else if (bubbleSizePercent <= 1.00) widthFraction = 1.25;
-            else widthFraction = 1.50;
-
+            // Horizontal Width: Scaled safely within candle duration
+            double widthFraction = Math.Min(0.40, 0.12 + (sizeScale * 0.15));
             TimeSpan bubbleWidthTime = TimeSpan.FromTicks((long)(barDuration.Ticks * widthFraction));
 
-            double bubbleCenter = level.Price;
             string name = $"Footprint_{barIndex}_{level.Price.ToString("F5").Replace(".", "_")}";
 
             try
             {
                 var ellipse = Chart.DrawEllipse(name + "_bubble",
-                    barTime.Subtract(bubbleWidthTime), bubbleCenter + bubbleRadius,
-                    barTime.Add(bubbleWidthTime), bubbleCenter - bubbleRadius,
+                    barTime.Subtract(bubbleWidthTime), topY,
+                    barTime.Add(bubbleWidthTime), bottomY,
                     color);
 
                 if (ellipse != null)
@@ -1678,19 +1734,14 @@ namespace cAlgo.Robots
 
             if (ShowDeltaLabels && absDelta >= 3)
             {
-                string label = $"{delta:+#;-#;0}";
-                var text = Chart.DrawText(name + "_label", label, barIndex, bubbleCenter, Color.White);
+                string labelTextStr = level.IsVacuumSpoof ? "VAC" : $"{delta:+#;-#;0}";
+                var text = Chart.DrawText(name + "_label", labelTextStr, barIndex, bubbleCenterY, Color.White);
                 if (text != null)
                 {
-                    if (absDelta >= 20) text.FontSize = 9;
-                    else if (absDelta >= 15) text.FontSize = 8;
-                    else if (absDelta >= 10) text.FontSize = 7;
-                    else if (absDelta >= 6) text.FontSize = 6;
-                    else text.FontSize = 5;
-
+                    text.FontSize = Math.Max(6, Math.Min(9, SignalFontSize));
                     text.HorizontalAlignment = HorizontalAlignment.Center;
                     text.VerticalAlignment = VerticalAlignment.Center;
-                    text.IsBold = absDelta >= 15;
+                    text.IsBold = absDelta >= 10 || level.IsVacuumSpoof;
                 }
             }
         }
@@ -1830,35 +1881,41 @@ namespace cAlgo.Robots
 
         private double RoundToPip(double price)
         {
-            double pipSize = Symbol.PipSize;
-
-            if (pipSize >= 0.1)
-            {
-                double groupSize;
-                if (price >= 10000) groupSize = 50;
-                else if (price >= 1000) groupSize = 10;
-                else if (price >= 100) groupSize = 5;
-                else groupSize = 1;
-                return Math.Round(price / groupSize) * groupSize;
-            }
-            else
-            {
-                return Math.Round(price / pipSize) * pipSize;
-            }
+            double step = Symbol.PipSize * (PipStep > 0 ? PipStep : 1.0);
+            return Math.Floor(price / step) * step;
         }
 
         private int FindBarIndex(DateTime time)
         {
-            for (int i = Bars.Count - 1; i >= 0; i--)
-            {
-                DateTime barStart = Bars.OpenTimes[i];
-                DateTime barEnd = i < Bars.Count - 1 ? Bars.OpenTimes[i + 1] : Server.Time;
+            if (Bars == null || Bars.Count == 0) return -1;
+            if (time < Bars.OpenTimes[0]) return -1; // Discard ticks before available chart history
 
-                if (time >= barStart && time < barEnd)
-                    return i;
+            int left = 0;
+            int right = Bars.Count - 1;
+            int bestMatch = -1;
+
+            while (left <= right)
+            {
+                int mid = left + (right - left) / 2;
+                if (Bars.OpenTimes[mid] <= time)
+                {
+                    bestMatch = mid;
+                    left = mid + 1;
+                }
+                else
+                {
+                    right = mid - 1;
+                }
             }
 
-            return Bars.Count - 1;
+            // Ensure the tick time falls strictly before the next bar open time
+            if (bestMatch >= 0 && bestMatch < Bars.Count - 1)
+            {
+                if (time >= Bars.OpenTimes[bestMatch + 1])
+                    return -1;
+            }
+
+            return bestMatch;
         }
 
         private Color GetColorFromString(string colorName)
@@ -1923,6 +1980,8 @@ namespace cAlgo.Robots
             public int BuyCount { get; set; }
             public int SellCount { get; set; }
             public int TotalCount { get; set; }
+            public double PriceImpact { get; set; }
+            public bool IsVacuumSpoof { get; set; }
         }
 
         // NEW: Cluster Zone data structure

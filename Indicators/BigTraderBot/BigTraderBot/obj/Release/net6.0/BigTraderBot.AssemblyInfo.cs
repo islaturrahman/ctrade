@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BigTraderBot")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34605a8cf538f2db394eb90b134cea770de8825d")]
 [assembly: System.Reflection.AssemblyProductAttribute("BigTraderBot")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BigTraderBot")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

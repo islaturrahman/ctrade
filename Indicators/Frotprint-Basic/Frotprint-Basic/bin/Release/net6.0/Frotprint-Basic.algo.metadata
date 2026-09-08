@@ -1,0 +1,92 @@
+[
+  {
+    "Flags": "Indicator",
+    "Guid": "00000000-0000-0000-0000-000000000000",
+    "Group": "Custom",
+    "FriendlyName": "VolumeProfilePerBar",
+    "ShortName": null,
+    "TypeName": "cAlgo.VolumeProfilePerBar",
+    "AssemblyName": "Frotprint-Basic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+    "TimeZone": "UTC",
+    "IsOverlay": true,
+    "IsPercentage": false,
+    "ScalePrecision": null,
+    "Levels": [],
+    "DefaultSymbolName": null,
+    "DefaultTimeFrame": null,
+    "Video": null,
+    "Lines": [],
+    "Clouds": [],
+    "Parameters": [
+      {
+        "MinValue": 10,
+        "MaxValue": 100,
+        "Step": 1,
+        "DefaultValue": 50,
+        "ParameterType": "Integer",
+        "PropertyName": "MaxBars",
+        "FriendlyName": "Max Bars",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 0.1,
+        "MaxValue": 1.7976931348623157E+308,
+        "Step": 0.1,
+        "DefaultValue": 1.0,
+        "ParameterType": "Double",
+        "PropertyName": "PipStep",
+        "FriendlyName": "Pip Step (Thickness)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "MinValue": 10,
+        "MaxValue": 100,
+        "Step": 1,
+        "DefaultValue": 80,
+        "ParameterType": "Integer",
+        "PropertyName": "ProfileWidthPercent",
+        "FriendlyName": "Max Width (%)",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "Green",
+        "ParameterType": "String",
+        "PropertyName": "BullishColorStr",
+        "FriendlyName": "Bullish Profile Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "Red",
+        "ParameterType": "String",
+        "PropertyName": "BearishColorStr",
+        "FriendlyName": "Bearish Profile Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      },
+      {
+        "DefaultValue": "Magenta",
+        "ParameterType": "String",
+        "PropertyName": "PocColorStr",
+        "FriendlyName": "POC Color",
+        "GroupName": null,
+        "IsValueVisibleInTitle": true,
+        "Description": ""
+      }
+    ],
+    "Capabilities": [],
+    "CustomAttributes": [],
+    "Sets": [],
+    "AddIndicatorsToChart": false,
+    "AdditionalInfoUrl": null,
+    "Bars": []
+  }
+]
